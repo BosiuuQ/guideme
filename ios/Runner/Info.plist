@@ -28,6 +28,7 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -41,18 +42,25 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 
-	<!-- ✅ Uprawnienia lokalizacyjne dla Mapbox -->
+	<!-- ✅ WYMAGANE DLA GOOGLE MAPS -->
+	<key>io.flutter.embedded_views_preview</key>
+	<true/>
+	<key>GMSApiKey</key>
+	<string>AIzaSyCvEzWl7SGN5LEAbaIs7nN91M7We3VHr5E</string>
+
+	<!-- ✅ Uprawnienia lokalizacyjne -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Aplikacja wymaga dostępu do lokalizacji, aby pokazywać Twoją pozycję na mapie.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Wymagamy dostępu do lokalizacji nawet w tle (np. do nawigacji lub zgłoszeń).</string>
 
-	<!-- ✅ Inne uprawnienia -->
+	<!-- ✅ Uprawnienia do zdjęć i aparatu -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Aplikacja wymaga dostępu do galerii, aby umożliwić wybór zdjęć.</string>
 	<key>NSCameraUsageDescription</key>

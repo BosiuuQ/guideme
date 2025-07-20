@@ -18,7 +18,6 @@ class LoginAuth {
         throw Exception("Nieprawidłowe dane logowania");
       }
 
-      
       // Sprawdzamy, czy użytkownik ma potwierdzony e-mail
       if (user.emailConfirmedAt == null) {
         throw Exception("Musisz potwierdzić e-mail przed logowaniem. Sprawdź swoją skrzynkę.");
@@ -29,14 +28,6 @@ class LoginAuth {
       }
 
       final userId = user.id;
-
-      // 🔐 Zapis FCM tokena do Supabase
-      final fcmToken = await FirebaseMessaging.instance.getToken();
-      if (fcmToken != null) {
-        await supabase.from('users').update({
-          'fcm_token': fcmToken,
-        }).eq('id', userId);
-      }
 
       final userResponse = await supabase
           .from('users')

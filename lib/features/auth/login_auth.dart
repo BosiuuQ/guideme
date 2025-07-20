@@ -1,5 +1,4 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 
 class LoginAuth {
   static Future<Map<String, dynamic>> loginUser({

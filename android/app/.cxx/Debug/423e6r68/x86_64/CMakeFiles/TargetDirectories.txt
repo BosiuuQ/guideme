@@ -1,0 +1,2 @@
+/Users/dawidoszubski/StudioProjects/guide_me/android/app/.cxx/Debug/423e6r68/x86_64/CMakeFiles/edit_cache.dir
+/Users/dawidoszubski/StudioProjects/guide_me/android/app/.cxx/Debug/423e6r68/x86_64/CMakeFiles/rebuild_cache.dir

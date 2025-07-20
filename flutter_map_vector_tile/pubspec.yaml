@@ -1,0 +1,9 @@
+name: flutter_map_vector_tile
+description: A placeholder for vector tile support
+version: 8.1.1
+environment:
+  sdk: ">=2.17.0 <4.0.0"
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_map: ^8.1.1

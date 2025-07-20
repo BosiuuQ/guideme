@@ -1,0 +1,50 @@
+buildscript {
+    def secureProps = new Properties()
+    def secureFile = rootProject.file("android/secure.properties")
+    if (secureFile.exists()) {
+        secureProps.load(new FileInputStream(secureFile))
+    }
+    ext.mapboxDownloadsToken = secureProps.getProperty("MAPBOX_DOWNLOADS_TOKEN") ?: ""
+
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url 'https://api.mapbox.com/downloads/v2/releases/maven'
+            credentials {
+                username = "mapbox"
+                password = mapboxDownloadsToken
+            }
+        }
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.0.2'
+        classpath 'com.google.gms:google-services:4.3.15'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url 'https://api.mapbox.com/downloads/v2/releases/maven'
+            credentials {
+                username = "mapbox"
+                password = mapboxDownloadsToken
+            }
+        }
+    }
+}
+
+rootProject.buildDir = '../build'
+
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+    project.evaluationDependsOn(':app')
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.layout.buildDirectory
+}

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "49207229368",
+    "project_id": "guideme-cefd9",
+    "storage_bucket": "guideme-cefd9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:49207229368:android:59972fc728fcb3032a2d4d",
+        "android_client_info": {
+          "package_name": "com.masdo.guide_me"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAVIT8fIvaYyIpyLrwcWsZoYUh1Z8l0yTg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

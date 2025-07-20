@@ -11,10 +11,6 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart'; // <--- DODAJ TEN
 
 final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<void>>();
 
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
-  print("\u{1F4E8} Powiadomienie w tle: ${message.notification?.title}");
-}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

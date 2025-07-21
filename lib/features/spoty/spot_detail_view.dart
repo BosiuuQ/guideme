@@ -28,7 +28,8 @@ class _SpotDetailViewState extends State<SpotDetailView> {
     if (userId == null) return;
 
     final spotId = widget.spot['id'];
-    final authorId = widget.spot['autor'];
+    final authorData = widget.spot['autor'];
+    final authorId = authorData is Map ? authorData['id'] : authorData;
 
     _isAuthor = userId == authorId;
 
@@ -50,14 +51,13 @@ class _SpotDetailViewState extends State<SpotDetailView> {
       _participantsProfiles = List<Map<String, dynamic>>.from(profiles);
     }
 
-    // Pobierz dane autora
+    // Pobierz dane autora tylko jeśli autorId to String
     if (authorId != null && authorId is String) {
       final profile = await supabase
           .from('users')
           .select('nickname, avatar')
           .eq('id', authorId)
           .maybeSingle();
-
       _authorProfile = profile;
     }
 
@@ -86,7 +86,7 @@ class _SpotDetailViewState extends State<SpotDetailView> {
 
       await _loadData();
     } catch (e) {
-      debugPrint("\u274c Toggle join error: $e");
+      debugPrint("❌ Toggle join error: $e");
     }
   }
 
@@ -104,6 +104,12 @@ class _SpotDetailViewState extends State<SpotDetailView> {
   @override
   Widget build(BuildContext context) {
     final spot = widget.spot;
+    final authorData = spot['autor'];
+    final authorNickname = (authorData is Map
+            ? authorData['nickname']
+            : null) ??
+        _authorProfile?['nickname'] ??
+        'Nieznany';
 
     return Scaffold(
       backgroundColor: const Color(0xFF0C0F1C),
@@ -131,8 +137,7 @@ class _SpotDetailViewState extends State<SpotDetailView> {
           _infoRow(Icons.location_pin, spot['lokalizacja']),
           _infoRow(Icons.category, "Typ: ${spot['typ'] ?? '-'}"),
           _infoRow(Icons.visibility, "Widoczność: ${spot['widocznosc'] ?? '-'}"),
-          _infoRow(Icons.person, "Autor: ${_authorProfile?['nickname'] ?? 'Nieznany'}"),
-
+          _infoRow(Icons.person, "Autor: $authorNickname"),
           const SizedBox(height: 16),
 
           if (spot['zasady'] != null && spot['zasady'].toString().trim().isNotEmpty)
@@ -162,7 +167,7 @@ class _SpotDetailViewState extends State<SpotDetailView> {
               foregroundColor: Colors.black,
               padding: const EdgeInsets.symmetric(vertical: 16),
             ),
-            child: Text(_isJoined ? "Opuść wydarzenie" : "\u2713 Dołącz do wydarzenia"),
+            child: Text(_isJoined ? "Opuść wydarzenie" : "✓ Dołącz do wydarzenia"),
           ),
           const SizedBox(height: 24),
 

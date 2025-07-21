@@ -36,15 +36,8 @@ void main() async {
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impyd3Bsa3puaHF4eHlkdGlwd2VjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI0OTQ1NTIsImV4cCI6MjA1ODA3MDU1Mn0.yqQqEI3SZcoxqFSAtQ0dXFVsq6aTv5Z-HD43s2lcH0k',
   );
 
-  // Reautoryzacja (opcjonalna)
-  final session = Supabase.instance.client.auth.currentSession;
-  if (session != null) {
-    try {
-      await Supabase.instance.client.auth.reauthenticate();
-    } catch (e) {
-      print("⚠️ Błąd reautoryzacji: $e");
-    }
-  }
+  // NIE UŻYWAJ reauthenticate() — powoduje wysyłkę maili
+  // Supabase sam utrzymuje sesję przy włączonym persistSession
 
   // SharedPreferences
   await SharedPreferences.getInstance();

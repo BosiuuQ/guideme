@@ -24,12 +24,43 @@ class _EditClubViewState extends State<EditClubView> {
   String? logoUrl;
   File? selectedImage;
 
+  bool isManager = false;
+  List<Map<String, dynamic>> themes = [];
+  int? selectedThemeId;
+
   @override
   void initState() {
     super.initState();
     _bioController = TextEditingController(text: widget.club['bio'] ?? '');
     isOpen = widget.club['is_open'] ?? true;
     logoUrl = widget.club['logo_url'];
+    selectedThemeId = widget.club['motyw_id'];
+    _loadPermissionsAndThemes();
+  }
+
+  Future<void> _loadPermissionsAndThemes() async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    final member = await supabase
+        .from('clubs_members')
+        .select('rola')
+        .eq('club_id', widget.club['id'])
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (member != null &&
+        (member['rola'] == 'Lider' || member['rola'] == 'Zastepca')) {
+      isManager = true;
+
+      final response = await supabase
+          .from('motywy_clubs')
+          .select('id, name, type');
+
+      setState(() {
+        themes = List<Map<String, dynamic>>.from(response);
+      });
+    }
   }
 
   Future<void> _pickLogoImage() async {
@@ -40,7 +71,8 @@ class _EditClubViewState extends State<EditClubView> {
   }
 
   Future<String?> _uploadLogo(File file) async {
-    final fileName = 'club_${widget.club['id']}_${DateTime.now().millisecondsSinceEpoch}${path.extension(file.path)}';
+    final fileName =
+        'club_${widget.club['id']}_${DateTime.now().millisecondsSinceEpoch}${path.extension(file.path)}';
     final bytes = await file.readAsBytes();
     final contentType = lookupMimeType(file.path);
     final filePath = 'logo/$fileName';
@@ -65,11 +97,20 @@ class _EditClubViewState extends State<EditClubView> {
       uploadedLogoUrl = await _uploadLogo(selectedImage!);
     }
 
-    await supabase.from('clubs').update({
+    final updateData = {
       'bio': _bioController.text.trim(),
       'is_open': isOpen,
       'logo_url': uploadedLogoUrl,
-    }).eq('id', widget.club['id']);
+    };
+
+    if (isManager && selectedThemeId != null) {
+      updateData['motyw_id'] = selectedThemeId;
+    }
+
+    await supabase
+        .from('clubs')
+        .update(updateData)
+        .eq('id', widget.club['id']);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -120,7 +161,30 @@ class _EditClubViewState extends State<EditClubView> {
                         if (val != null) setState(() => isOpen = val);
                       },
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
+                    if (isManager && themes.isNotEmpty) ...[
+                      const Text("🎨 Motyw klubu",
+                          style: TextStyle(color: Colors.white70)),
+                      const SizedBox(height: 8),
+                      DropdownButtonFormField<int>(
+                        value: selectedThemeId,
+                        decoration: _inputDecoration("Wybierz motyw"),
+                        dropdownColor: const Color(0xFF1F2A44),
+                        style: const TextStyle(color: Colors.white),
+                        items: themes.map((motyw) {
+                          return DropdownMenuItem<int>(
+                            value: motyw['id'] as int,
+                            child: Text(motyw['name']),
+                          );
+                        }).toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => selectedThemeId = val);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 24),
+                    ],
                     const Text("🖼️ Logo klubu",
                         style: TextStyle(color: Colors.white70)),
                     const SizedBox(height: 8),
@@ -129,9 +193,11 @@ class _EditClubViewState extends State<EditClubView> {
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
                         child: selectedImage != null
-                            ? Image.file(selectedImage!, height: 160, fit: BoxFit.cover)
+                            ? Image.file(selectedImage!,
+                                height: 160, fit: BoxFit.cover)
                             : (logoUrl != null && logoUrl!.isNotEmpty
-                                ? Image.network(logoUrl!, height: 160, fit: BoxFit.cover)
+                                ? Image.network(logoUrl!,
+                                    height: 160, fit: BoxFit.cover)
                                 : Container(
                                     height: 160,
                                     color: Colors.black12,

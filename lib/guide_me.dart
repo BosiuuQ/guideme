@@ -1,4 +1,3 @@
-// ✅ guide_me.dart
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -38,25 +37,17 @@ class _GuideMeState extends ConsumerState<GuideMe> with WidgetsBindingObserver {
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) async {
+  void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
       _lastOnlineUpdater.stop();
       print("⏸️ Aktualizacja last_online zatrzymana – aplikacja w tle lub zamykana.");
     } else if (state == AppLifecycleState.resumed) {
-      final session = Supabase.instance.client.auth.currentSession;
-      if (session != null) {
-        try {
-          await Supabase.instance.client.auth.reauthenticate();
-          final user = Supabase.instance.client.auth.currentUser;
-          if (user != null) {
-            _lastOnlineUpdater.start();
-            print("✅ Użytkownik zalogowany – wznowiono last_online i sesję.");
-          } else {
-            print("❌ Brak zalogowanego użytkownika po reautoryzacji.");
-          }
-        } catch (e) {
-          print("⚠️ Błąd podczas reautoryzacji: $e");
-        }
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        _lastOnlineUpdater.start();
+        print("✅ Użytkownik zalogowany – wznowiono last_online.");
+      } else {
+        print("❌ Brak zalogowanego użytkownika.");
       }
     }
   }
@@ -78,7 +69,7 @@ class _GuideMeState extends ConsumerState<GuideMe> with WidgetsBindingObserver {
         routerDelegate: router.routerDelegate,
         routeInformationParser: router.routeInformationParser,
         routeInformationProvider: router.routeInformationProvider,
-        backButtonDispatcher: RootBackButtonDispatcher(), // ← najważniejsze!
+        backButtonDispatcher: RootBackButtonDispatcher(),
       ),
     );
   }

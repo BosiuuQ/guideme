@@ -55,7 +55,7 @@ class _RankingViewState extends State<RankingView> {
                 final currentIndex = data.indexWhere((item) => item['user_id'] == currentUserId);
                 final currentUserItem = currentIndex >= 0 ? data[currentIndex] : null;
 
-                final isClubRanking = _selected == 'clubs';
+                final isClubRanking = false;
 
                 return Column(
                   children: [
@@ -229,7 +229,6 @@ class _RankingViewState extends State<RankingView> {
           _buildSelectorButton('km', 'Kilometry'),
           _buildSelectorButton('lvl', 'Poziom'),
           _buildSelectorButton('posts', 'Posty IG'),
-          _buildSelectorButton('clubs', 'Kluby'),
         ],
       ),
     );

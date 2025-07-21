@@ -67,29 +67,13 @@ class _InviteToClubViewState extends State<InviteToClubView> {
   }
 
   Future<void> _sendInvite(String userId) async {
-    final existingMembership = await supabase
-        .from('clubs_members')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
+    final canInvite = await _canInviteToClub(userId);
 
-    if (existingMembership != null) {
+    if (!canInvite) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Użytkownik już należy do klubu")),
-      );
-      return;
-    }
-
-    final existingInvite = await supabase
-        .from('club_invitations')
-        .select()
-        .eq('club_id', widget.clubId)
-        .eq('user_id', userId)
-        .maybeSingle();
-
-    if (existingInvite != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Użytkownik już został zaproszony")),
+        const SnackBar(
+          content: Text("Nie można zaprosić – użytkownik już jest w klubie lub ma zaproszenie."),
+        ),
       );
       return;
     }
@@ -102,6 +86,25 @@ class _InviteToClubViewState extends State<InviteToClubView> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Zaproszenie wysłane")),
     );
+  }
+
+  Future<bool> _canInviteToClub(String userId) async {
+    final isInClub = await supabase
+        .from('clubs_members')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (isInClub != null) return false;
+
+    final hasInvite = await supabase
+        .from('club_invitations')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('club_id', widget.clubId)
+        .maybeSingle();
+
+    return hasInvite == null;
   }
 
   @override
@@ -168,6 +171,9 @@ class _InviteToClubViewState extends State<InviteToClubView> {
                       style: const TextStyle(color: Colors.white)),
                   trailing: ElevatedButton(
                     onPressed: () => _sendInvite(user['id']),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.teal,
+                    ),
                     child: const Text("Zaproś"),
                   ),
                 );

@@ -184,23 +184,23 @@ class _PostDetailsViewState extends State<PostDetailsView> {
               padding: const EdgeInsets.all(12.0),
               child: Row(
                 children: [
-                  GestureDetector(
-                    onTap: _toggleLike,
-                    child: _isLiking
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.white),
-                          )
-                        : Icon(
-                            (_postData['liked_by_me'] == true || _postData['liked_by_me'] == 'true')
-                                ? Icons.favorite
-                                : Icons.favorite_border,
-                            color: (_postData['liked_by_me'] == true || _postData['liked_by_me'] == 'true')
-                                ? Colors.redAccent
-                                : Colors.white,
-                          ),
-                  ),
+        GestureDetector(
+  onTap: _toggleLike,
+  child: _isLiking
+      ? const SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.white),
+        )
+      : Icon(
+          Icons.favorite,
+          color: (_postData['liked_by_me'] == true || _postData['liked_by_me'] == 'true')
+              ? Colors.red
+              : Colors.white.withOpacity(0.5),
+          size: 28,
+        ),
+),
+
                   const SizedBox(width: 6),
                   Text("${_postData['likes'] ?? 0}", style: const TextStyle(color: Colors.white)),
                   const SizedBox(width: 16),

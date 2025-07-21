@@ -34,6 +34,8 @@ class _ChatViewState extends State<ChatView> {
   DateTime? _friendLastOnline;
 
   bool _shouldScroll = false;
+  bool _initialScrollDone = false;
+
 
   @override
   void initState() {
@@ -138,16 +140,24 @@ class _ChatViewState extends State<ChatView> {
   }
 
   String _formatLastSeen() {
-    if (_friendLastOnline == null) return "Nieaktywny";
-    final now = DateTime.now();
-    final diff = now.difference(_friendLastOnline!);
-    if (diff.inHours < 24) {
-      return "Aktywny: ${diff.inHours} godz. temu";
-    } else {
-      return "Aktywny: ${_friendLastOnline!.day.toString().padLeft(2, '0')}.${_friendLastOnline!.month.toString().padLeft(2, '0')} o ${_friendLastOnline!.hour.toString().padLeft(2, '0')}:${_friendLastOnline!.minute.toString().padLeft(2, '0')}";
-    }
-  }
+  if (_friendLastOnline == null) return "Nieaktywny";
 
+  final now = DateTime.now();
+  final diff = now.difference(_friendLastOnline!);
+
+  if (diff.inMinutes <= 8) {
+    return "Aktywny";
+  } else if (diff.inMinutes <= 59) {
+    return "Aktywny: ${diff.inMinutes}m temu";
+  } else if (diff.inHours < 24) {
+    return "Aktywny: ${diff.inHours}h temu";
+  } else {
+    final date = _friendLastOnline!;
+    final formattedDate = "${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}";
+    final formattedTime = "${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}";
+    return "Aktywny: $formattedDate o $formattedTime";
+  }
+}
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -188,12 +198,18 @@ class _ChatViewState extends State<ChatView> {
                         return const Center(child: CircularProgressIndicator());
                       }
                       final messages = snapshot.data!;
-                      if (_shouldScroll) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          _scrollToBottom();
-                          _shouldScroll = false;
-                        });
-                      }
+                     WidgetsBinding.instance.addPostFrameCallback((_) {
+  if (!_initialScrollDone && _scrollController.hasClients) {
+    _scrollToBottom();
+    _initialScrollDone = true;
+  } else if (_shouldScroll && _scrollController.hasClients) {
+    final isNearBottom = _scrollController.position.maxScrollExtent - _scrollController.position.pixels < 100;
+    if (isNearBottom) {
+      _scrollToBottom();
+      _shouldScroll = false;
+    }
+  }
+});
                       return ListView.builder(
                         controller: _scrollController,
                         itemCount: messages.length,

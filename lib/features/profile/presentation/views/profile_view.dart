@@ -26,26 +26,35 @@ class ProfileView extends StatefulWidget {
 }
 
 class _ProfileViewState extends State<ProfileView> {
-  bool isRequestSent = false;
-  bool isLoadingRequestStatus = true;
+bool isRequestSent = false;
+bool isLoadingRequestStatus = true;
+bool _isFriend = false; // <-- DODANE
   double currentKm = 0;
 
-  @override
-  void initState() {
-    super.initState();
-    if (widget.userId != null) {
-      _checkFriendRequestStatus();
-    }
-    _loadDistance();
-  }
+Future<void> _checkFriendRequestStatus() async {
+  final result = await ZnajomiBackend.isFriendRequestSent(widget.userId!);
+  setState(() {
+    isRequestSent = result;
+    isLoadingRequestStatus = false;
+  });
+}
 
-  Future<void> _checkFriendRequestStatus() async {
-    final result = await ZnajomiBackend.isFriendRequestSent(widget.userId!);
-    setState(() {
-      isRequestSent = result;
-      isLoadingRequestStatus = false;
-    });
+ @override
+void initState() {
+  super.initState();
+  if (widget.userId != null) {
+    _checkFriendRequestStatus();
+    _checkIfFriend();
   }
+  _loadDistance();
+}
+
+  Future<void> _checkIfFriend() async {
+  final result = await ZnajomiBackend.areFriends(widget.userId!);
+  setState(() {
+    _isFriend = result;
+  });
+}
 
   Future<void> _loadDistance() async {
     final userId = widget.userId ?? Supabase.instance.client.auth.currentUser?.id;
@@ -62,15 +71,33 @@ class _ProfileViewState extends State<ProfileView> {
     });
   }
 
-  Future<void> _sendFriendRequest() async {
-    await ZnajomiBackend.sendFriendRequest(widget.userId!);
+ Future<void> _sendFriendRequest() async {
+  await ZnajomiBackend.sendFriendRequest(widget.userId!);
+  setState(() {
+    isRequestSent = true;
+  });
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text("Zaproszenie wysłane")),
+  );
+}
+
+// ⬇️ tutaj wklej:
+Future<void> _removeFriend() async {
+  try {
+    await ZnajomiBackend.removeFriend(widget.userId!);
     setState(() {
-      isRequestSent = true;
+      _isFriend = false;
+      isRequestSent = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Zaproszenie wysłane")),
+      const SnackBar(content: Text("Usunięto ze znajomych")),
+    );
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Błąd: $e")),
     );
   }
+}
 
   Future<void> _handleGarageAccess() async {
     final userId = widget.userId!;
@@ -255,20 +282,28 @@ class _ProfileViewState extends State<ProfileView> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Expanded(
-                      child: isLoadingRequestStatus
-                          ? const Center(child: CircularProgressIndicator())
-                          : ElevatedButton.icon(
-                              onPressed: isRequestSent ? null : _sendFriendRequest,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: isRequestSent ? Colors.grey : AppColors.blue,
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                              icon: const Icon(Icons.person_add_alt_1),
-                              label: Text(isRequestSent ? "Zaproszenie wysłane" : "Dodaj do znajomych"),
-                            ),
-                    ),
+                 Expanded(
+  child: isLoadingRequestStatus
+      ? const Center(child: CircularProgressIndicator())
+      : ElevatedButton.icon(
+          onPressed: _isFriend
+              ? _removeFriend
+              : (isRequestSent ? null : _sendFriendRequest),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: _isFriend
+                ? Colors.redAccent
+                : (isRequestSent ? Colors.grey : AppColors.blue),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          icon: Icon(_isFriend
+              ? Icons.person_remove
+              : (isRequestSent ? Icons.hourglass_top : Icons.person_add_alt_1)),
+          label: Text(_isFriend
+              ? "Usuń znajomego"
+              : (isRequestSent ? "Zaproszenie oczekuje" : "Dodaj do znajomych")),
+        ),
+),
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton.icon(

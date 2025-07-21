@@ -5,6 +5,8 @@ import 'package:guide_me/core/config/routing/app_routes.dart';
 import 'package:guide_me/features/znajomi/znajomi_backend.dart';
 import 'package:guide_me/features/znajomi/domain/friend_model.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 
 class ZnajomiView extends StatefulWidget {
   const ZnajomiView({Key? key}) : super(key: key);
@@ -29,12 +31,42 @@ class _ZnajomiViewState extends State<ZnajomiView> {
   }
 
   String formatLastOnline(String? isoString) {
-    if (isoString == null) return "Online";
+    if (isoString == null) return "Offline";
     try {
-      final date = DateTime.parse(isoString).toLocal();
-      return "Ostatnio online: ${DateFormat('dd.MM.yyyy HH:mm').format(date)}";
+      final lastOnline = DateTime.parse(isoString).toLocal();
+      final now = DateTime.now();
+      final diff = now.difference(lastOnline);
+
+      if (diff.inMinutes <= 8) {
+        return "Aktywny";
+      } else if (diff.inMinutes < 60) {
+        return "Aktywny: ${diff.inMinutes}m temu";
+      } else if (diff.inHours < 24) {
+        return "Aktywny: ${diff.inHours}h temu";
+      } else {
+        final formatted = DateFormat('dd.MM.yyyy HH:mm').format(lastOnline);
+        return "⚫ Aktywny: $formatted";
+      }
     } catch (_) {
       return "Offline";
+    }
+  }
+
+  Color _statusColor(String? isoString) {
+    if (isoString == null) return Colors.grey;
+    try {
+      final lastOnline = DateTime.parse(isoString).toLocal();
+      final diff = DateTime.now().difference(lastOnline);
+
+      if (diff.inMinutes <= 8) {
+        return Colors.green;
+      } else if (diff.inMinutes < 60) {
+        return Colors.orange;
+      } else {
+        return Colors.grey;
+      }
+    } catch (_) {
+      return Colors.grey;
     }
   }
 
@@ -159,7 +191,7 @@ class _ZnajomiViewState extends State<ZnajomiView> {
                                     width: 12,
                                     height: 12,
                                     decoration: BoxDecoration(
-                                      color: friend.lastOnline == null ? Colors.green : Colors.grey,
+                                      color: _statusColor(friend.lastOnline),
                                       shape: BoxShape.circle,
                                       border: Border.all(color: Colors.black, width: 2),
                                     ),
@@ -245,12 +277,15 @@ class _ZnajomiViewState extends State<ZnajomiView> {
                 trailing: IconButton(
                   icon: const Icon(Icons.check, color: Colors.greenAccent),
                   onPressed: () async {
-                    await ZnajomiBackend.acceptFriendRequest(friend.requestId!);
-                    if (mounted) {
-                      Navigator.of(dialogContext).pop();
-                      setState(() => _loadData());
-                    }
-                  },
+  await ZnajomiBackend.acceptFriendRequest(friend.requestId!);
+  final currentUserId = Supabase.instance.client.auth.currentUser!.id;
+  await ZnajomiBackend.removeOppositeFriendRequest(friend.id, currentUserId); // ⬅️ poprawione
+  if (mounted) {
+    Navigator.of(dialogContext).pop();
+    setState(() => _loadData());
+  }
+},
+
                 ),
               );
             },

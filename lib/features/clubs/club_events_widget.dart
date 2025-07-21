@@ -46,7 +46,7 @@ class _ClubEventsWidgetState extends State<ClubEventsWidget> {
     if (user == null) return;
 
     final result = await supabase
-        .from('club_members')
+        .from('clubs_members')
         .select('role')
         .eq('club_id', widget.clubId)
         .eq('user_id', user.id)
@@ -54,7 +54,7 @@ class _ClubEventsWidgetState extends State<ClubEventsWidget> {
 
     setState(() {
       canManage = result != null &&
-          (result['role'] == 'Lider' || result['role'] == 'Zastepca');
+          (result['rola'] == 'Lider' || result['rola'] == 'Zastepca');
     });
   }
 

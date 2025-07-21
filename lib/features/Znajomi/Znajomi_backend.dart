@@ -60,46 +60,60 @@ class ZnajomiBackend {
     }).toList();
   }
 
-  static Future<void> acceptFriendRequest(String friendRequestId) async {
-    final currentUserId = _supabase.auth.currentUser?.id;
-    if (currentUserId == null) return;
+ static Future<void> acceptFriendRequest(String friendRequestId) async {
+  final currentUserId = _supabase.auth.currentUser?.id;
+  if (currentUserId == null) return;
 
-    final request = await _supabase
-        .from('friend_requests')
-        .select('from_user_id, to_user_id')
-        .eq('id', friendRequestId)
-        .maybeSingle();
+  final request = await _supabase
+      .from('friend_requests')
+      .select('from_user_id, to_user_id')
+      .eq('id', friendRequestId)
+      .maybeSingle();
 
-    if (request == null) return;
+  if (request == null) return;
 
-    final fromUserId = request['from_user_id'];
-    final toUserId = request['to_user_id'];
+  final fromUserId = request['from_user_id'];
+  final toUserId = request['to_user_id'];
 
-    await _supabase.from('friends').insert({
-      'user1_id': fromUserId,
-      'user2_id': toUserId,
-      'created_at': DateTime.now().toIso8601String(),
-    });
+  await _supabase.from('friends').insert({
+    'user1_id': fromUserId,
+    'user2_id': toUserId,
+    'created_at': DateTime.now().toIso8601String(),
+  });
 
-    await _supabase.from('friend_requests').delete().eq('id', friendRequestId);
-  }
+  // Usuń oryginalne zaproszenie
+  await _supabase.from('friend_requests').delete().eq('id', friendRequestId);
 
-  static Future<void> acceptFriend(String otherUserId) async {
-    final currentUserId = _supabase.auth.currentUser?.id;
-    if (currentUserId == null) return;
+  // Usuń zaproszenie w drugą stronę (jeśli istnieje)
+  await removeOppositeFriendRequest(fromUserId, toUserId);
+}
 
-    await _supabase.from('friends').insert({
-      'user1_id': currentUserId,
-      'user2_id': otherUserId,
-      'created_at': DateTime.now().toIso8601String(),
-    });
+static Future<void> acceptFriend(String otherUserId) async {
+  final currentUserId = _supabase.auth.currentUser?.id;
+  if (currentUserId == null) return;
 
-    await _supabase
-        .from('friend_requests')
-        .delete()
-        .eq('from_user_id', otherUserId)
-        .eq('to_user_id', currentUserId);
-  }
+  await _supabase.from('friends').insert({
+    'user1_id': currentUserId,
+    'user2_id': otherUserId,
+    'created_at': DateTime.now().toIso8601String(),
+  });
+
+  await _supabase
+      .from('friend_requests')
+      .delete()
+      .eq('from_user_id', otherUserId)
+      .eq('to_user_id', currentUserId);
+
+  await removeOppositeFriendRequest(currentUserId, otherUserId);
+}
+
+static Future<void> removeOppositeFriendRequest(String fromUserId, String toUserId) async {
+  await _supabase
+      .from('friend_requests')
+      .delete()
+      .eq('from_user_id', fromUserId)
+      .eq('to_user_id', toUserId);
+}
 
   static Future<void> rejectFriendRequest(String fromUserId) async {
     final currentUserId = _supabase.auth.currentUser?.id;
@@ -125,26 +139,36 @@ class ZnajomiBackend {
 
     return response != null;
   }
+static Future<void> sendFriendRequest(String toUserId) async {
+  final supabase = Supabase.instance.client;
+  final currentUserId = supabase.auth.currentUser?.id;
+  if (currentUserId == null || currentUserId == toUserId) return;
 
-  static Future<void> sendFriendRequest(String toUserId) async {
-    final currentUserId = _supabase.auth.currentUser?.id;
-    if (currentUserId == null || currentUserId == toUserId) return;
-
-    final existing = await _supabase
+  try {
+    final existing = await supabase
         .from('friend_requests')
-        .select()
-        .eq('from_user_id', currentUserId)
-        .eq('to_user_id', toUserId)
+        .select('id')
+        .or(
+          'and(from_user_id.eq.$currentUserId,to_user_id.eq.$toUserId),and(from_user_id.eq.$toUserId,to_user_id.eq.$currentUserId)'
+        )
         .maybeSingle();
 
-    if (existing != null) return;
+    if (existing != null) {
+      print("🔁 Istnieje już zaproszenie – nie wysyłamy ponownie.");
+      return;
+    }
 
-    await _supabase.from('friend_requests').insert({
+    await supabase.from('friend_requests').insert({
       'from_user_id': currentUserId,
       'to_user_id': toUserId,
       'created_at': DateTime.now().toIso8601String(),
     });
+
+    print("✅ Zaproszenie wysłane.");
+  } catch (e) {
+    print("❌ Błąd wysyłania zaproszenia: $e");
   }
+}
 
   static Future<String?> getCurrentUserId() async {
     return _supabase.auth.currentUser?.id;
@@ -239,4 +263,24 @@ class ZnajomiBackend {
     }
     return false;
   }
+
+  //zakaz-ponownego-zapraszania
+  
+
+  //removeznaJOMYCH
+static Future<void> removeFriend(String userId) async {
+  final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+  if (currentUserId == null) throw Exception("Brak zalogowanego użytkownika");
+
+  await Supabase.instance.client
+    .from('friends')
+    .delete()
+    .match({'user1_id': currentUserId, 'user2_id': userId});
+
+await Supabase.instance.client
+    .from('friends')
+    .delete()
+    .match({'user1_id': userId, 'user2_id': currentUserId});
+}
+
 }

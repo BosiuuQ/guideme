@@ -15,6 +15,20 @@ class ViewpointBackend {
     return publicUrl;
   }
 
+//limit dodawania
+static Future<bool> canAddViewpoint(String userId) async {
+  final now = DateTime.now().toUtc();
+  final oneHourAgo = now.subtract(const Duration(hours: 1));
+
+  final result = await Supabase.instance.client
+      .from('punkty_widokowe')
+      .select('id')
+      .eq('author_id', userId)
+      .gte('created_at', oneHourAgo.toIso8601String());
+
+  return result.isEmpty;
+}
+
   /// Dodaje punkt widokowy do bazy danych wraz z przesłanym obrazem.
   static Future<void> addViewpoint(Viewpoint viewpoint, File imageFile, String fileName) async {
     final imageUrl = await uploadViewpointImage(imageFile, fileName);

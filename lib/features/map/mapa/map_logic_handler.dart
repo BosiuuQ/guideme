@@ -1,9 +1,10 @@
-// map_logic_handler.dart
+// 🔄 FINALNA WERSJA map_logic_handler.dart z płynnym 60/120 FPS i bez obracania gdy stoisz
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter/services.dart' as services;
@@ -12,16 +13,17 @@ import 'package:guide_me/features/map/mapa/dark_map_style.dart';
 
 class MapLogicHandler {
   final VoidCallback onUpdate;
-  MapLogicHandler({required this.onUpdate});
+  final TickerProvider tickerProvider;
+  late final Ticker _ticker;
+
+  MapLogicHandler({required this.onUpdate, required this.tickerProvider}) {
+    _ticker = tickerProvider.createTicker(_onTick);
+  }
 
   static const Duration _locationInterval = Duration(milliseconds: 200);
-  static const Duration _interpInterval = Duration(milliseconds: 50);
-  static const double _minBearingDistance = 0.3; // minimalna odległość do obliczania bearingu
-
   GoogleMapController? _controller;
   final DistanceTracker _distanceTracker = DistanceTracker();
   StreamSubscription<Position>? _positionStream;
-  Timer? _interpolationTimer;
 
   LatLng? _prevLocation;
   LatLng? _targetLocation;
@@ -34,8 +36,10 @@ class MapLogicHandler {
   bool followUser = true;
   bool forceFollowUser = true;
   bool mapReady = false;
+
   double _currentSpeed = 0.0;
   double _lastSpeed = 0.0;
+  double _cameraBearing = 0.0; // aktualne wychylenie kamery
 
   LatLng? get targetLocation => _targetLocation;
 
@@ -43,18 +47,19 @@ class MapLogicHandler {
     await _loadCustomMarker();
     await _distanceTracker.initialize();
 
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-      permission = await Geolocator.requestPermission();
-    }
+    final permission = await Geolocator.requestPermission();
     if (permission != LocationPermission.whileInUse && permission != LocationPermission.always) return;
 
     final pos = await Geolocator.getCurrentPosition();
     _prevLocation = LatLng(pos.latitude, pos.longitude);
     _targetLocation = _prevLocation;
     _lastUpdate = DateTime.now();
+    _currentSpeed = pos.speed * 3.6;
+    _cameraBearing = 0.0;
     _updateUserMarker(_targetLocation!);
+
     onUpdate();
+    _ticker.start();
 
     _positionStream?.cancel();
     _positionStream = Geolocator.getPositionStream(
@@ -69,50 +74,54 @@ class MapLogicHandler {
       _lastSpeed = _currentSpeed;
       _currentSpeed = position.speed * 3.6;
 
-      if (_prevLocation != null &&
-          _targetLocation != null &&
-          _distanceBetween(_prevLocation!, _targetLocation!) > _minBearingDistance) {
-        _bearing = _calculateBearing(_prevLocation!, _targetLocation!);
+      final newBearing = _calculateBearing(_prevLocation!, _targetLocation!);
+      if (_currentSpeed > 2.5) {
+        _bearing = newBearing;
       }
 
       _lastUpdate = DateTime.now();
       _distanceTracker.updateDistance(position);
     });
-
-    _startInterpolationLoop();
   }
 
-  void _startInterpolationLoop() {
-    _interpolationTimer?.cancel();
-    _interpolationTimer = Timer.periodic(_interpInterval, (_) {
-      if (!mapReady || _prevLocation == null || _targetLocation == null || _lastUpdate == null) return;
+  void _onTick(Duration elapsed) {
+    if (!mapReady || _prevLocation == null || _targetLocation == null || _lastUpdate == null) return;
 
-      final elapsed = DateTime.now().difference(_lastUpdate!).inMilliseconds / _locationInterval.inMilliseconds;
-      final t = elapsed.clamp(0.0, 1.0);
-      final lat = _lerp(_prevLocation!.latitude, _targetLocation!.latitude, t);
-      final lng = _lerp(_prevLocation!.longitude, _targetLocation!.longitude, t);
-      final interpolated = LatLng(lat, lng);
+    final elapsedMs = DateTime.now().difference(_lastUpdate!).inMilliseconds;
+    final t = (elapsedMs / _locationInterval.inMilliseconds).clamp(0.0, 1.0);
 
-      _updateUserMarker(interpolated);
+    final lat = _lerp(_prevLocation!.latitude, _targetLocation!.latitude, t);
+    final lng = _lerp(_prevLocation!.longitude, _targetLocation!.longitude, t);
+    final interpolated = LatLng(lat, lng);
 
-      if ((followUser || forceFollowUser) && _controller != null) {
-        _controller!.animateCamera(
-          CameraUpdate.newCameraPosition(
-            CameraPosition(target: interpolated, zoom: 17, bearing: _bearing, tilt: 45),
-          ),
-        );
-      }
+    // płynne obracanie
+    if (_currentSpeed > 2.5) {
+      _cameraBearing = _lerpAngle(_cameraBearing, _bearing, 0.05); // wygładzenie
+    } else {
+      _cameraBearing = _lerpAngle(_cameraBearing, 0, 0.05);
+    }
 
-      onUpdate();
-    });
+    _updateUserMarker(interpolated);
+
+    if ((followUser || forceFollowUser) && _controller != null) {
+      _controller!.moveCamera(CameraUpdate.newCameraPosition(
+        CameraPosition(
+          target: interpolated,
+          zoom: 17,
+          bearing: _cameraBearing,
+          tilt: 45,
+        ),
+      ));
+    }
+
+    onUpdate();
   }
 
   double _lerp(double a, double b, double t) => a + (b - a) * t;
 
-  double _distanceBetween(LatLng a, LatLng b) {
-    final dx = a.latitude - b.latitude;
-    final dy = a.longitude - b.longitude;
-    return sqrt(dx * dx + dy * dy);
+  double _lerpAngle(double a, double b, double t) {
+    final delta = ((((b - a) + 180) % 360) - 180);
+    return (a + delta * t) % 360;
   }
 
   Future<void> _loadCustomMarker() async {
@@ -156,10 +165,16 @@ class MapLogicHandler {
         zoom: 17,
         tilt: 45,
       ),
-      onMapCreated: (ctrl) {
+      onMapCreated: (ctrl) async {
         _controller = ctrl;
-        _controller!.setMapStyle(darkMapStyle);
+        await _controller!.setMapStyle(darkMapStyle);
         mapReady = true;
+
+        if (_targetLocation != null) {
+          _controller!.moveCamera(CameraUpdate.newCameraPosition(
+            CameraPosition(target: _targetLocation!, zoom: 17, bearing: 0, tilt: 45),
+          ));
+        }
       },
       myLocationEnabled: false,
       myLocationButtonEnabled: false,
@@ -168,7 +183,7 @@ class MapLogicHandler {
       onCameraMoveStarted: () {
         if (!forceFollowUser) {
           followUser = false;
-          onUpdate(); // poinformuj UI, że trzeba zmienić kolor przycisku
+          onUpdate();
         }
       },
       tiltGesturesEnabled: true,
@@ -216,7 +231,7 @@ class MapLogicHandler {
   void enableFollowUser() {
     followUser = forceFollowUser = true;
     if (_targetLocation != null && _controller != null && mapReady) {
-      _controller!.animateCamera(CameraUpdate.newCameraPosition(
+      _controller!.moveCamera(CameraUpdate.newCameraPosition(
         CameraPosition(target: _targetLocation!, zoom: 17, bearing: _bearing, tilt: 45),
       ));
     }
@@ -224,7 +239,7 @@ class MapLogicHandler {
   }
 
   void dispose() {
+    _ticker.dispose();
     _positionStream?.cancel();
-    _interpolationTimer?.cancel();
   }
 }

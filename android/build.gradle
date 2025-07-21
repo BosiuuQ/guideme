@@ -1,11 +1,9 @@
 buildscript {
-    def secureProps = new Properties()
-    def secureFile = rootProject.file("android/secure.properties")
-    if (secureFile.exists()) {
-        secureProps.load(new FileInputStream(secureFile))
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
     }
-
- 
 
     dependencies {
         classpath 'com.android.tools.build:gradle:8.0.2'
@@ -13,7 +11,12 @@ buildscript {
     }
 }
 
-
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
 
 rootProject.buildDir = '../build'
 

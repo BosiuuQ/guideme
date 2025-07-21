@@ -13,6 +13,50 @@ class ClubController {
     return result != null;
   }
 
+  // Sprawdź, czy ma zaproszenie do jakiegokolwiek klubu
+  Future<bool> hasPendingInvitation(String userId) async {
+    final result = await supabase
+        .from('club_invitations')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
+    return result != null;
+  }
+
+  // Sprawdź, czy można zaprosić użytkownika
+  Future<bool> canInviteToClub(String userId) async {
+    final isAlreadyInClub = await isInClub(userId);
+    final hasInvitation = await hasPendingInvitation(userId);
+
+    return !isAlreadyInClub && !hasInvitation;
+  }
+
+  // Sprawdź, czy może zarządzać klubem
+  Future<bool> canManageClub(String clubId, String userId) async {
+    final result = await supabase
+        .from('clubs_members')
+        .select('rola')
+        .eq('club_id', clubId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    final rola = result?['rola'];
+    return rola == 'Lider' || rola == 'Zastepca';
+  }
+
+  // Sprawdź, czy Lider/Właściciel
+  Future<bool> isLeaderOrOwner(String clubId, String userId) async {
+    final result = await supabase
+        .from('clubs_members')
+        .select('rola')
+        .eq('club_id', clubId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    final rola = result?['rola'];
+    return rola == 'Lider' || rola == 'Właściciel';
+  }
+
   // Pobierz dane klubu użytkownika
   Future<Map<String, dynamic>?> getMyClub(String userId) async {
     final membership = await supabase
@@ -171,17 +215,5 @@ class ClubController {
       'avatar_url': avatarUrl,
       'message': message,
     });
-  }
-
-  // Uprawnienia (Lider/Zastępca)
-  Future<bool> canManageClub(String clubId, String userId) async {
-    final result = await supabase
-        .from('club_members')
-        .select('a')
-        .eq('club_id', clubId)
-        .eq('user_id', userId)
-        .maybeSingle();
-    return result != null &&
-        (result['rola'] == 'Lider' || result['rola'] == 'Zastepca');
   }
 }

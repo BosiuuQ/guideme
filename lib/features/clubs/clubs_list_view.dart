@@ -54,7 +54,7 @@ class _ClubsListViewState extends State<ClubsListView> {
     await supabase.from('clubs_members').insert({
       'user_id': userId,
       'club_id': clubId,
-      'rola': 'Członek',
+      'rola': 'Czlonek',
     });
 
     if (mounted) {

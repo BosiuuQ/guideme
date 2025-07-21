@@ -12,15 +12,14 @@ class MainMapWidget extends StatefulWidget {
   State<MainMapWidget> createState() => _MainMapWidgetState();
 }
 
-class _MainMapWidgetState extends State<MainMapWidget> {
+class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProviderStateMixin {
   late MapLogicHandler _mapLogic;
   bool _mapInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    _mapLogic = MapLogicHandler(onUpdate: () => setState(() {}));
-    // Odłóż uruchomienie mapy na pierwszą klatkę, by uniknąć crasha.
+    _mapLogic = MapLogicHandler(onUpdate: () => setState(() {}), tickerProvider: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_mapInitialized) {
         _mapLogic.initializeTracking(context);
@@ -41,7 +40,6 @@ class _MainMapWidgetState extends State<MainMapWidget> {
       children: [
         _mapLogic.buildGoogleMap(),
 
-        // 🔎 WYSZUKIWARKA + TAGI
         Positioned(
           top: 40,
           left: 10,
@@ -81,7 +79,6 @@ class _MainMapWidgetState extends State<MainMapWidget> {
           ),
         ),
 
-        // ▶️ PRZYCISK ŚLEDZENIA
         Positioned(
           bottom: 20,
           right: 20,
@@ -102,7 +99,6 @@ class _MainMapWidgetState extends State<MainMapWidget> {
           ),
         ),
 
-        // 🧭 PRĘDKOŚCIOMIERZ
         Positioned(
           bottom: 20,
           left: 20,

@@ -170,7 +170,7 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
             Positioned(
               left: 16,
               right: 16,
-              bottom: 30,
+              top: 60,
               child: Material(
                 color: const Color(0xFF1A1D2E),
                 elevation: 6,

@@ -69,6 +69,15 @@ class _ViewpointAddViewState extends State<ViewpointAddView> {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) throw Exception("Nie jesteś zalogowany.");
 
+      final canAdd = await ViewpointBackend.canAddViewpoint(user.id);
+      if (!canAdd) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Limit: Można dodać tylko jeden punkt na godzinę.")),
+        );
+        return;
+      }
+
       final fileName = 'viewpoint_${const Uuid().v4()}.jpg';
       final coordinates = await _getCurrentLocation();
 

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 
+// ... importy bez zmian
+
 class PanelAdminView extends StatefulWidget {
   const PanelAdminView({super.key});
 
@@ -53,26 +55,30 @@ class _PanelAdminViewState extends State<PanelAdminView> with TickerProviderStat
     instaPostCount = posts.length;
     monthlyActiveUsers = activeUsers.length;
 
-    reports['Widokowe'] = await supabase
-        .from('punkty_widokowe_zgloszenia')
-        .select('*, users!punkty_widokowe_zgloszenia_user_id_fkey(nickname)')
-        .order('created_at', ascending: false);
+    // pobierz zgłoszenia
+   // Widokowe
+reports['Widokowe'] = await supabase
+    .from('punkty_widokowe_zgloszenia')
+    .select('*, users(nickname)')
+    .order('created_at', ascending: false);
 
-    reports['InstaGuide'] = await supabase
-        .from('zgloszenia_ig')
-        .select('*, users!zgloszenia_ig_reporter_user_id_fkey(nickname)')
-        .order('created_at', ascending: false);
+// InstaGuide
+reports['InstaGuide'] = await supabase
+    .from('zgloszenia_ig')
+    .select('*, users:reporter_user_id(nickname)')
+    .order('created_at', ascending: false);
 
-    reports['Garaż'] = await supabase
-        .from('zgloszenia_pojazdy')
-        .select('*, users!zgloszenia_pojazdy_reporter_id_fkey(nickname)')
-        .order('created_at', ascending: false);
+// Garaż
+reports['Garaż'] = await supabase
+    .from('zgloszenia_pojazdy')
+    .select('*, users:reporter_id(nickname)')
+    .order('created_at', ascending: false);
 
-    reports['Profile'] = await supabase
-        .from('zgloszenia_profile')
-        .select('*, reporter:users!zgloszenia_profile_reporter_user_id_fkey(nickname), reported:users!zgloszenia_profile_reported_user_id_fkey(nickname)')
-        .order('created_at', ascending: false);
-
+// Profile
+reports['Profile'] = await supabase
+    .from('zgloszenia_profile')
+    .select('*, reporter:users!zgloszenia_profile_reporter_user_id_fkey(nickname), reported:users!zgloszenia_profile_reported_user_id_fkey(nickname)')
+    .order('created_at', ascending: false);
     setState(() {});
   }
 
@@ -91,7 +97,7 @@ class _PanelAdminViewState extends State<PanelAdminView> with TickerProviderStat
 
   Future<void> handleAction(String action, Map<String, dynamic> report, String category) async {
     final rolaText = getRoleLabel(role);
-    final reporter = report['users']?['nickname'] ?? 'Nieznany';
+    final reporter = report['users']?['nickname'] ?? report['reporter']?['nickname'] ?? 'Nieznany';
     final jsonText = const JsonEncoder.withIndent('  ').convert(report);
 
     final embed = {
@@ -114,7 +120,7 @@ class _PanelAdminViewState extends State<PanelAdminView> with TickerProviderStat
       'Widokowe': 'punkty_widokowe_zgloszenia',
       'InstaGuide': 'zgloszenia_ig',
       'Garaż': 'zgloszenia_pojazdy',
-      'Profile': 'zgloszenia_profil',
+      'Profile': 'zgloszenia_profile',
     };
 
     await supabase.from(tableMap[category]!).delete().eq('id', report['id']);
@@ -172,7 +178,7 @@ class _PanelAdminViewState extends State<PanelAdminView> with TickerProviderStat
                   itemBuilder: (_, i) {
                     final r = list[i];
                     final reason = r['reason'] ?? 'Brak powodu';
-                    final nick = r['users']?['nickname'] ?? 'Nieznany';
+                    final nick = r['users']?['nickname'] ?? r['reporter']?['nickname'] ?? 'Nieznany';
 
                     return Container(
                       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

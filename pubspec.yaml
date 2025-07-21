@@ -2,7 +2,7 @@ name: guide_me
 description: "GuideMe"
 
 publish_to: 'none'
-version: 1.0.0+11
+version: 1.0.0+13
 
 environment:
   sdk: ^3.6.0

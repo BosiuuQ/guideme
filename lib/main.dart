@@ -7,30 +7,36 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:guide_me/guide_me.dart';
 import 'package:intl/intl.dart';
+import 'dart:io'; // ← potrzebne do sprawdzania platformy
 
 final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<void>>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Orientacja
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
+  // EasyLocalization
   await EasyLocalization.ensureInitialized();
   Intl.defaultLocale = 'pl';
 
+  // Status bar + bottom bar
   SystemChrome.setEnabledSystemUIMode(
     SystemUiMode.manual,
     overlays: [SystemUiOverlay.bottom, SystemUiOverlay.top],
   );
 
+  // Supabase
   await Supabase.initialize(
     url: 'https://jrwplkznhqxxydtipwec.supabase.co',
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impyd3Bsa3puaHF4eHlkdGlwd2VjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDI0OTQ1NTIsImV4cCI6MjA1ODA3MDU1Mn0.yqQqEI3SZcoxqFSAtQ0dXFVsq6aTv5Z-HD43s2lcH0k',
   );
 
+  // Reautoryzacja (opcjonalna)
   final session = Supabase.instance.client.auth.currentSession;
   if (session != null) {
     try {
@@ -40,8 +46,10 @@ void main() async {
     }
   }
 
+  // SharedPreferences
   await SharedPreferences.getInstance();
 
+  // Uruchomienie aplikacji
   runApp(
     ProviderScope(
       child: EasyLocalization(

@@ -14,12 +14,19 @@ class MainMapWidget extends StatefulWidget {
 
 class _MainMapWidgetState extends State<MainMapWidget> {
   late MapLogicHandler _mapLogic;
+  bool _mapInitialized = false;
 
   @override
   void initState() {
     super.initState();
     _mapLogic = MapLogicHandler(onUpdate: () => setState(() {}));
-    _mapLogic.initializeTracking(context);
+    // Odłóż uruchomienie mapy na pierwszą klatkę, by uniknąć crasha.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_mapInitialized) {
+        _mapLogic.initializeTracking(context);
+        _mapInitialized = true;
+      }
+    });
   }
 
   @override
@@ -81,7 +88,7 @@ class _MainMapWidgetState extends State<MainMapWidget> {
           child: GestureDetector(
             onTap: () {
               _mapLogic.enableFollowUser();
-              setState(() {}); // odśwież UI (kolor przycisku)
+              setState(() {});
             },
             child: Container(
               padding: const EdgeInsets.all(10),
@@ -148,10 +155,10 @@ class _MainMapWidgetState extends State<MainMapWidget> {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const SpotyView()));
             }),
             buildTag(Icons.groups_rounded, 'Kluby', () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => ClubsHomeView()));
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const ClubsHomeView()));
             }),
             buildTag(Icons.landscape_rounded, 'Punkty Widokowe', () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => ViewpointView()));
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const ViewpointView()));
             }),
           ],
         ),

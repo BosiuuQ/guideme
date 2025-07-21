@@ -63,15 +63,3 @@ dependencies {
 }
 
 apply plugin: 'com.google.gms.google-services'
-
-repositories {
-    google()
-    mavenCentral()
-    maven {
-        url 'https://api.mapbox.com/downloads/v2/releases/maven'
-        credentials {
-            username = "mapbox"
-            password = rootProject.ext.mapboxDownloadsToken
-        }
-    }
-}

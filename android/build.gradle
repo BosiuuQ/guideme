@@ -4,19 +4,8 @@ buildscript {
     if (secureFile.exists()) {
         secureProps.load(new FileInputStream(secureFile))
     }
-    ext.mapboxDownloadsToken = secureProps.getProperty("MAPBOX_DOWNLOADS_TOKEN") ?: ""
 
-    repositories {
-        google()
-        mavenCentral()
-        maven {
-            url 'https://api.mapbox.com/downloads/v2/releases/maven'
-            credentials {
-                username = "mapbox"
-                password = mapboxDownloadsToken
-            }
-        }
-    }
+ 
 
     dependencies {
         classpath 'com.android.tools.build:gradle:8.0.2'
@@ -24,19 +13,7 @@ buildscript {
     }
 }
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-        maven {
-            url 'https://api.mapbox.com/downloads/v2/releases/maven'
-            credentials {
-                username = "mapbox"
-                password = mapboxDownloadsToken
-            }
-        }
-    }
-}
+
 
 rootProject.buildDir = '../build'
 

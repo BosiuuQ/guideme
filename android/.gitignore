@@ -12,5 +12,4 @@ key.properties
 **/*.keystore
 **/*.jks
 
-# Ignore secure Mapbox token
 android/secure.properties

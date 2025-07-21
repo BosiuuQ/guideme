@@ -9,13 +9,6 @@ pluginManagement {
 
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 
-    repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-        maven { url 'https://api.mapbox.com/downloads/v2/releases/maven' }
-    }
-}
 
 plugins {
     id "dev.flutter.flutter-plugin-loader" version "1.0.0"

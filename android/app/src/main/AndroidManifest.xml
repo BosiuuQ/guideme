@@ -19,10 +19,6 @@
             android:name="com.google.android.geo.API_KEY"
             android:value="AIzaSyCdl4aWnYfr3dBsmYdXd-WvXc3xOHn7PtA" />
 
-        <!-- 🔑 Mapbox API Token -->
-        <meta-data
-            android:name="com.mapbox.maps.token"
-            android:value="pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg" />
 
         <activity
             android:name=".MainActivity"

@@ -7,17 +7,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:guide_me/guide_me.dart';
 import 'package:intl/intl.dart';
-import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart'; // <--- DODAJ TEN IMPORT
 
 final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<void>>();
 
-
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Ustawienie tokena Mapbox
-  String ACCESS_TOKEN = "pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg";
-  MapboxOptions.setAccessToken(ACCESS_TOKEN);
 
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
@@ -26,6 +20,7 @@ void main() async {
 
   await EasyLocalization.ensureInitialized();
   Intl.defaultLocale = 'pl';
+
   SystemChrome.setEnabledSystemUIMode(
     SystemUiMode.manual,
     overlays: [SystemUiOverlay.bottom, SystemUiOverlay.top],

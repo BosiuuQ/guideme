@@ -3,8 +3,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'dart:ui' as ui;
-import 'package:flutter/services.dart' as services;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
@@ -22,20 +20,10 @@ class NavigationLogic {
   StreamSubscription<Position>? positionStream;
   Timer? interpolationTimer;
 
-  static const Duration _locationInterval = Duration(milliseconds: 200);
-  int _animationDurationMs = _locationInterval.inMilliseconds;
-
   LatLng? _prevLocation;
   LatLng? _targetLocation;
-  // interpolated position to be consumed by the UI (smooth user cursor)
-  LatLng? currentPosition;
-  // custom icon used to match marker appearance in non-route mode
-  BitmapDescriptor? customIcon;
-  BitmapDescriptor? routeModeIcon;
   DateTime? _lastUpdate;
   double bearing = 0;
-  // smoothed camera bearing for smooth rotation
-  double _cameraBearing = 0;
 
   DateTime? _arrivalTime;
   double _remainingDistance = 0;
@@ -71,9 +59,6 @@ class NavigationLogic {
   String? get nextInstruction => _getNextInstruction();
   String? get maneuverType => _maneuver;
   double get distanceToNextTurn => _distanceToNextTurn;
-
-  // expose smoothed camera bearing for views
-  double get cameraBearing => _cameraBearing;
   double get remainingDistance => _remainingDistance;
   int get remainingDuration => _remainingDuration;
   DateTime? get arrivalTime => _arrivalTime;
@@ -87,50 +72,7 @@ class NavigationLogic {
   Future<void> initLogic(BuildContext context) async {
     await _distanceTracker.initialize();
     await fetchRouteSteps();
-    await _loadCustomMarker();
-    await _createRouteModeIcon();
     await _startLocationUpdates(context);
-  }
-
-  Future<void> _loadCustomMarker() async {
-    try {
-      final bd = await services.rootBundle.load('assets/icons/marker.png');
-      final codec = await ui.instantiateImageCodec(
-        bd.buffer.asUint8List(),
-        targetWidth: 140,
-        targetHeight: 140,
-      );
-      final frame = await codec.getNextFrame();
-      final data = await frame.image.toByteData(format: ui.ImageByteFormat.png);
-      customIcon = BitmapDescriptor.fromBytes(data!.buffer.asUint8List());
-    } catch (e) {
-      print('[NavigationLogic] Nie udało się załadować custom marker: \$e');
-      customIcon = null;
-    }
-  }
-
-  Future<void> _createRouteModeIcon() async {
-    try {
-      // create a circular blue dot with an outer blue ring
-      final recorder = ui.PictureRecorder();
-      final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, 80, 80));
-      final center = Offset(40, 40);
-      final innerPaint = Paint()..color = const Color(0xFF42A5F5)..style = PaintingStyle.fill;
-      final outerPaint = Paint()..color = const Color(0xFF1E88E5)..style = PaintingStyle.stroke..strokeWidth = 6;
-      // inner filled circle
-      canvas.drawCircle(center, 18, innerPaint);
-      // outer ring
-      canvas.drawCircle(center, 26, outerPaint);
-      final pic = recorder.endRecording();
-      final img = await pic.toImage(80, 80);
-      final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
-      if (bytes != null) {
-        routeModeIcon = BitmapDescriptor.fromBytes(bytes.buffer.asUint8List());
-      }
-    } catch (e) {
-      print('[NavigationLogic] Nie udalo sie wygenerowac routeModeIcon: \$e');
-      routeModeIcon = null;
-    }
   }
 
   Future<void> fetchRouteSteps() async {
@@ -191,10 +133,7 @@ class NavigationLogic {
       _prevLocation = _targetLocation;
       _targetLocation = LatLng(position.latitude, position.longitude);
       bearing = position.heading;
-      final now = DateTime.now();
-      final incomingInterval = _lastUpdate != null ? now.difference(_lastUpdate!).inMilliseconds : _locationInterval.inMilliseconds;
-      _animationDurationMs = max(_locationInterval.inMilliseconds, incomingInterval);
-      _lastUpdate = now;
+      _lastUpdate = DateTime.now();
       await _distanceTracker.updateDistance(position);
       _updateLiveNavigationData(context);
       onUpdate();
@@ -202,21 +141,16 @@ class NavigationLogic {
 
     interpolationTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
       if (_prevLocation == null || _targetLocation == null || _lastUpdate == null) return;
-      final elapsedMs = DateTime.now().difference(_lastUpdate!).inMilliseconds;
-      final t = (elapsedMs / _animationDurationMs).clamp(0.0, 1.0);
+      final elapsed = DateTime.now().difference(_lastUpdate!).inMilliseconds / 200;
+      final t = elapsed.clamp(0.0, 1.0);
       final lat = _lerp(_prevLocation!.latitude, _targetLocation!.latitude, t);
       final lng = _lerp(_prevLocation!.longitude, _targetLocation!.longitude, t);
       final interpolated = LatLng(lat, lng);
-      // expose interpolated position for UI so we can render a custom, smoothly-updated user marker
-      currentPosition = interpolated;
-
-      // smooth camera bearing over the interpolation time so rotation is not jerky
-      _cameraBearing = _lerpAngle(_cameraBearing, bearing, t);
 
       if (mapController != null) {
-        mapController!.moveCamera(CameraUpdate.newCameraPosition(CameraPosition(
+        mapController!.animateCamera(CameraUpdate.newCameraPosition(CameraPosition(
           target: interpolated,
-          bearing: _cameraBearing,
+          bearing: bearing,
           zoom: 18,
           tilt: 45,
         )));
@@ -226,11 +160,6 @@ class NavigationLogic {
   }
 
   double _lerp(double a, double b, double t) => a + (b - a) * t;
-
-double _lerpAngle(double a, double b, double t) {
-  final delta = ((((b - a) + 180) % 360) - 180);
-  return (a + delta * t) % 360;
-}
 
   void _calculateETA() {
     _remainingDistance = 0;

@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
@@ -72,7 +74,10 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
       body: Stack(
         children: [
           GoogleMap(
-            initialCameraPosition: CameraPosition(target: widget.routePoints.first, zoom: 16),
+            initialCameraPosition: CameraPosition(
+            target: widget.routePoints.first,
+              zoom: 16,
+            ),
             onMapCreated: _logic.handleMapCreated,
             polylines: {
               Polyline(
@@ -82,6 +87,26 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
                 points: _logic.polylinePoints,
               )
             },
+            circles: {
+              if (_logic.currentPosition != null) ...{
+                Circle(
+                  circleId: const CircleId('user_halo'),
+                  center: _logic.currentPosition!,
+                  radius: 10,
+                  fillColor: Colors.lightBlueAccent.withOpacity(0.25),
+                  strokeColor: Colors.transparent,
+                  strokeWidth: 0,
+                ),
+                Circle(
+                  circleId: const CircleId('user_inner'),
+                  center: _logic.currentPosition!,
+                  radius: 4,
+                  fillColor: Colors.lightBlue.shade200,
+                  strokeColor: Colors.white.withOpacity(0),
+                  strokeWidth: 0,
+                ),
+              }
+            },
             markers: {
               Marker(
                 markerId: const MarkerId('destination'),
@@ -90,12 +115,17 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
                 icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
               ),
             },
-            myLocationEnabled: true,
+            myLocationEnabled: false,
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             rotateGesturesEnabled: false,
             compassEnabled: false,
+            gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+              Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
+            },
           ),
+
+
 
           Positioned(
             top: 50,

@@ -21,6 +21,8 @@ class MapLogicHandler {
   }
 
   static const Duration _locationInterval = Duration(milliseconds: 200);
+  // dynamic animation duration based on actual update interval
+  int _animationDurationMs = _locationInterval.inMilliseconds;
   GoogleMapController? _controller;
   final DistanceTracker _distanceTracker = DistanceTracker();
   StreamSubscription<Position>? _positionStream;
@@ -53,7 +55,10 @@ class MapLogicHandler {
     final pos = await Geolocator.getCurrentPosition();
     _prevLocation = LatLng(pos.latitude, pos.longitude);
     _targetLocation = _prevLocation;
-    _lastUpdate = DateTime.now();
+      final now = DateTime.now();
+      final incomingInterval = _lastUpdate != null ? now.difference(_lastUpdate!).inMilliseconds : _locationInterval.inMilliseconds;
+      _animationDurationMs = max(_locationInterval.inMilliseconds, incomingInterval);
+      _lastUpdate = now;
     _currentSpeed = pos.speed * 3.6;
     _cameraBearing = 0.0;
     _updateUserMarker(_targetLocation!);
@@ -79,7 +84,10 @@ class MapLogicHandler {
         _bearing = newBearing;
       }
 
-      _lastUpdate = DateTime.now();
+      final now = DateTime.now();
+      final incomingInterval = _lastUpdate != null ? now.difference(_lastUpdate!).inMilliseconds : _locationInterval.inMilliseconds;
+      _animationDurationMs = max(_locationInterval.inMilliseconds, incomingInterval);
+      _lastUpdate = now;
       _distanceTracker.updateDistance(position);
     });
   }
@@ -88,7 +96,7 @@ class MapLogicHandler {
     if (!mapReady || _prevLocation == null || _targetLocation == null || _lastUpdate == null) return;
 
     final elapsedMs = DateTime.now().difference(_lastUpdate!).inMilliseconds;
-    final t = (elapsedMs / _locationInterval.inMilliseconds).clamp(0.0, 1.0);
+    final t = (elapsedMs / _animationDurationMs).clamp(0.0, 1.0);
 
     final lat = _lerp(_prevLocation!.latitude, _targetLocation!.latitude, t);
     final lng = _lerp(_prevLocation!.longitude, _targetLocation!.longitude, t);

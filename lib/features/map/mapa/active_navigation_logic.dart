@@ -27,14 +27,11 @@ class NavigationLogic {
 
   LatLng? _prevLocation;
   LatLng? _targetLocation;
-  // interpolated position to be consumed by the UI (smooth user cursor)
   LatLng? currentPosition;
-  // custom icon used to match marker appearance in non-route mode
   BitmapDescriptor? customIcon;
   BitmapDescriptor? routeModeIcon;
   DateTime? _lastUpdate;
   double bearing = 0;
-  // smoothed camera bearing for smooth rotation
   double _cameraBearing = 0;
 
   DateTime? _arrivalTime;
@@ -111,15 +108,12 @@ class NavigationLogic {
 
   Future<void> _createRouteModeIcon() async {
     try {
-      // create a circular blue dot with an outer blue ring
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, 80, 80));
       final center = Offset(40, 40);
       final innerPaint = Paint()..color = const Color(0xFF42A5F5)..style = PaintingStyle.fill;
       final outerPaint = Paint()..color = const Color(0xFF1E88E5)..style = PaintingStyle.stroke..strokeWidth = 6;
-      // inner filled circle
       canvas.drawCircle(center, 18, innerPaint);
-      // outer ring
       canvas.drawCircle(center, 26, outerPaint);
       final pic = recorder.endRecording();
       final img = await pic.toImage(80, 80);
@@ -207,10 +201,8 @@ class NavigationLogic {
       final lat = _lerp(_prevLocation!.latitude, _targetLocation!.latitude, t);
       final lng = _lerp(_prevLocation!.longitude, _targetLocation!.longitude, t);
       final interpolated = LatLng(lat, lng);
-      // expose interpolated position for UI so we can render a custom, smoothly-updated user marker
       currentPosition = interpolated;
 
-      // smooth camera bearing over the interpolation time so rotation is not jerky
       _cameraBearing = _lerpAngle(_cameraBearing, bearing, t);
 
       if (mapController != null) {

@@ -21,7 +21,6 @@ class MapLogicHandler {
   }
 
   static const Duration _locationInterval = Duration(milliseconds: 200);
-  // dynamic animation duration based on actual update interval
   int _animationDurationMs = _locationInterval.inMilliseconds;
   GoogleMapController? _controller;
   final DistanceTracker _distanceTracker = DistanceTracker();

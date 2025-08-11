@@ -1,9 +1,3 @@
-# guide_me
-
-GuideMe
-
-
-
 ## TODO
 
 1. Zmienić metodę rsowania kursora w trybie mapy tak, aby był on pod nazwami ulic (E)

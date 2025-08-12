@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
@@ -25,6 +26,35 @@ class ActiveNavigationView extends StatefulWidget {
 }
 
 class _ActiveNavigationViewState extends State<ActiveNavigationView> {
+  // Screen position of the in-app cursor overlay (keeps the same look as previous map circles,
+  // but rendered above map labels by drawing on top of the GoogleMap widget).
+  Offset? _cursorScreenPosition;
+  final double _haloSize = 42.0;
+  final double _innerSize = 18.0;
+
+  Timer? _cursorTimer;
+
+  Future<void> _updateCursorScreenPosition() async {
+    if (_logic.mapController == null || _logic.currentPosition == null) return;
+    try {
+      final screenCoord = await _logic.mapController!.getScreenCoordinate(_logic.currentPosition!);
+      if (!mounted) return;
+      final dpr = MediaQuery.of(context).devicePixelRatio;
+      setState(() {
+        _cursorScreenPosition = Offset(screenCoord.x.toDouble() / dpr, screenCoord.y.toDouble() / dpr);
+      });
+      // if we somehow didn't get pixels, schedule a short retry
+      if (_cursorScreenPosition == null) {
+        Future.delayed(const Duration(milliseconds: 200), () => _updateCursorScreenPosition());
+      }
+    } catch (e) {
+      // retry once after a short delay (map might not be fully ready)
+      Future.delayed(const Duration(milliseconds: 250), () {
+        if (mounted) _updateCursorScreenPosition();
+      });
+    }
+  }
+
   late NavigationLogic _logic;
 
   @override
@@ -34,7 +64,10 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
       routePoints: widget.routePoints,
       destination: widget.destination,
       destinationName: widget.destinationName,
-      onUpdate: () => setState(() {}),
+      onUpdate: () {
+      if (mounted) setState(() {});
+      _updateCursorScreenPosition();
+    },
       onRecalculated: (_) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -44,10 +77,14 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
       },
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => _logic.initLogic(context));
+    // start periodic cursor updater
+    _cursorTimer = Timer.periodic(const Duration(milliseconds: 250), (_) => _updateCursorScreenPosition());
+
   }
 
   @override
   void dispose() {
+    _cursorTimer?.cancel();
     _logic.dispose();
     super.dispose();
   }
@@ -78,7 +115,7 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
             target: widget.routePoints.first,
               zoom: 16,
             ),
-            onMapCreated: _logic.handleMapCreated,
+            onMapCreated: (controller) { _logic.handleMapCreated(controller); _updateCursorScreenPosition(); },
             polylines: {
               Polyline(
                 polylineId: const PolylineId('full_route'),
@@ -87,26 +124,7 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
                 points: _logic.polylinePoints,
               )
             },
-            circles: {
-              if (_logic.currentPosition != null) ...{
-                Circle(
-                  circleId: const CircleId('user_halo'),
-                  center: _logic.currentPosition!,
-                  radius: 10,
-                  fillColor: Colors.lightBlueAccent.withOpacity(0.25),
-                  strokeColor: Colors.transparent,
-                  strokeWidth: 0,
-                ),
-                Circle(
-                  circleId: const CircleId('user_inner'),
-                  center: _logic.currentPosition!,
-                  radius: 4,
-                  fillColor: Colors.lightBlue.shade200,
-                  strokeColor: Colors.white.withOpacity(0),
-                  strokeWidth: 0,
-                ),
-              }
-            },
+            
             markers: {
               Marker(
                 markerId: const MarkerId('destination'),
@@ -119,6 +137,7 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             rotateGesturesEnabled: false,
+            onCameraMove: (pos) => _updateCursorScreenPosition(),
             compassEnabled: false,
             gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
               Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
@@ -127,7 +146,8 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
 
 
 
-          Positioned(
+          
+Positioned(
             top: 50,
             left: 12,
             right: 12,
@@ -174,7 +194,40 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
               ),
             ),
           ),
-        ],
+        
+          // Overlay cursor drawn above map labels (same visual as previous map circles).
+          if (_logic.currentPosition != null) Positioned(
+            left: (_cursorScreenPosition?.dx ?? (MediaQuery.of(context).size.width / 2)) - (_haloSize / 2),
+            top: (_cursorScreenPosition?.dy ?? (MediaQuery.of(context).size.height / 2)) - (_haloSize / 2),
+            child: IgnorePointer(
+              child: SizedBox(
+                width: _haloSize,
+                height: _haloSize,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      width: _haloSize,
+                      height: _haloSize,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.lightBlueAccent.withOpacity(0.25),
+                      ),
+                    ),
+                    Container(
+                      width: _innerSize,
+                      height: _innerSize,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.lightBlue.shade200,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+],
       ),
     );
   }
@@ -189,3 +242,6 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
     );
   }
 }
+
+          // Overlay cursor drawn above map labels (same visual as previous map circles).
+          

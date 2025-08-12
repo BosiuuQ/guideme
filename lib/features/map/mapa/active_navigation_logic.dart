@@ -24,6 +24,13 @@ class NavigationLogic {
 
   static const Duration _locationInterval = Duration(milliseconds: 200);
   int _animationDurationMs = _locationInterval.inMilliseconds;
+  // Duration for the bearing (rotation) interpolation in milliseconds.
+  // Set to ~3000ms to make rotations slower and smoother.
+  int _bearingAnimationDurationMs = 3000;
+  // Bearing animation bookkeeping
+  DateTime? _bearingAnimationStart;
+  double _bearingAnimationFrom = 0.0;
+  double _bearingAnimationTo = 0.0;
 
   LatLng? _prevLocation;
   LatLng? _targetLocation;
@@ -184,8 +191,13 @@ class NavigationLogic {
     positionStream = Geolocator.getPositionStream(locationSettings: locationSettings).listen((position) async {
       _prevLocation = _targetLocation;
       _targetLocation = LatLng(position.latitude, position.longitude);
-      bearing = position.heading;
+      // store new heading target and start bearing animation
       final now = DateTime.now();
+      // start bearing animation from current camera bearing to the new heading
+      _bearingAnimationStart = now;
+      _bearingAnimationFrom = _cameraBearing;
+      _bearingAnimationTo = position.heading;
+      bearing = position.heading;
       final incomingInterval = _lastUpdate != null ? now.difference(_lastUpdate!).inMilliseconds : _locationInterval.inMilliseconds;
       _animationDurationMs = max(_locationInterval.inMilliseconds, incomingInterval);
       _lastUpdate = now;
@@ -197,13 +209,33 @@ class NavigationLogic {
     interpolationTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
       if (_prevLocation == null || _targetLocation == null || _lastUpdate == null) return;
       final elapsedMs = DateTime.now().difference(_lastUpdate!).inMilliseconds;
-      final t = (elapsedMs / _animationDurationMs).clamp(0.0, 1.0);
+      // position interpolation factor (keeps position updates responsive)
+      final t = (_animationDurationMs > 0) ? (elapsedMs / _animationDurationMs).clamp(0.0, 1.0) : 1.0;
+      // bearing interpolation factor (we want a slower, smoother rotation)
+      final tBearing = (_bearingAnimationDurationMs > 0) ? (elapsedMs / _bearingAnimationDurationMs).clamp(0.0, 1.0) : 1.0;
+
       final lat = _lerp(_prevLocation!.latitude, _targetLocation!.latitude, t);
       final lng = _lerp(_prevLocation!.longitude, _targetLocation!.longitude, t);
       final interpolated = LatLng(lat, lng);
       currentPosition = interpolated;
 
-      _cameraBearing = _lerpAngle(_cameraBearing, bearing, t);
+      // use a separate, slower interpolation for camera bearing to stretch the rotate animation
+      double interpolatedBearing;
+      if (_bearingAnimationStart != null) {
+        final elapsedBearing = DateTime.now().difference(_bearingAnimationStart!).inMilliseconds;
+        final tb = (_bearingAnimationDurationMs > 0) ? (elapsedBearing / _bearingAnimationDurationMs).clamp(0.0, 1.0) : 1.0;
+        interpolatedBearing = _lerpAngle(_bearingAnimationFrom, _bearingAnimationTo, tb);
+        // when finished, nullify the start so we don't keep recalculating
+        if (tb >= 1.0) {
+          _bearingAnimationStart = null;
+          _cameraBearing = _bearingAnimationTo % 360;
+        } else {
+          _cameraBearing = interpolatedBearing % 360;
+        }
+      } else {
+        // fallback: linear interpolate from current camera bearing to latest bearing
+        _cameraBearing = _lerpAngle(_cameraBearing, bearing, tBearing);
+      }
 
       if (mapController != null) {
         mapController!.moveCamera(CameraUpdate.newCameraPosition(CameraPosition(

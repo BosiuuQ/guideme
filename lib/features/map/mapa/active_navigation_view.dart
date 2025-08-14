@@ -26,8 +26,6 @@ class ActiveNavigationView extends StatefulWidget {
 }
 
 class _ActiveNavigationViewState extends State<ActiveNavigationView> {
-  // Screen position of the in-app cursor overlay (keeps the same look as previous map circles,
-  // but rendered above map labels by drawing on top of the GoogleMap widget).
   Offset? _cursorScreenPosition;
   final double _haloSize = 42.0;
   final double _innerSize = 18.0;
@@ -43,12 +41,10 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
       setState(() {
         _cursorScreenPosition = Offset(screenCoord.x.toDouble() / dpr, screenCoord.y.toDouble() / dpr);
       });
-      // if we somehow didn't get pixels, schedule a short retry
       if (_cursorScreenPosition == null) {
         Future.delayed(const Duration(milliseconds: 200), () => _updateCursorScreenPosition());
       }
     } catch (e) {
-      // retry once after a short delay (map might not be fully ready)
       Future.delayed(const Duration(milliseconds: 250), () {
         if (mounted) _updateCursorScreenPosition();
       });
@@ -138,24 +134,47 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
             zoomControlsEnabled: false,
             rotateGesturesEnabled: false,
             onCameraMove: (pos) => _updateCursorScreenPosition(),
+            onCameraMoveStarted: () { _logic.notifyUserPanned(); },
+            onCameraIdle: () { _logic.notifyProgrammaticIdle(); },
             compassEnabled: false,
             gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
               Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
             },
-          ),
+          
+),
 
+          // Transparent listener overlay to detect user panning gestures without blocking the map.
+          Positioned.fill(
+            child: Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (_) {
+                _logic.forceStopFollowingUser();
+                setState(() {});
+              },
+            ),
+          ),
 
 
           
 Positioned(
-            top: 50,
-            left: 12,
-            right: 12,
-            child: NavigationInstructionBar(
-              maneuverType: _logic.maneuver ?? 'straight',
-              distanceMeters: _logic.distanceToNextTurn,
-              streetName: _logic.streetName ?? '',
-              nextManeuverText: _logic.nextInstruction ?? '',
+            bottom: 180,
+            right: 20,
+            child: Visibility(
+              visible: !_logic.followUser,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  _logic.enableFollowUser();
+                  setState(() {});
+                },
+                icon: const Icon(Icons.my_location),
+                label: const Text('Wycentruj'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00C6FF),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  elevation: 6,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+              ),
             ),
           ),
 

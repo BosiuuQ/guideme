@@ -82,7 +82,8 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
         Positioned(
           bottom: 20,
           right: 20,
-          child: GestureDetector(
+          child: _mapLogic.followUser
+          ? GestureDetector(
             onTap: () {
               _mapLogic.enableFollowUser();
               setState(() {});
@@ -96,8 +97,20 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
               ),
               child: const Icon(Icons.navigation_rounded, color: Colors.white),
             ),
-          ),
-        ),
+          )
+          : ElevatedButton.icon(
+              onPressed: () {
+                _mapLogic.enableFollowUser();
+                setState(() {});
+              },
+              icon: const Icon(Icons.my_location),
+              label: const Text('Wycentruj'),
+              style: ElevatedButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                elevation: 6,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+            )),
 
         Positioned(
           bottom: 20,

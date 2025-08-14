@@ -38,6 +38,11 @@ class MapLogicHandler {
   bool forceFollowUser = true;
   bool mapReady = false;
 
+  // When true, camera movement was triggered programmatically by the app.
+  // Used to distinguish user drags from programmatic camera updates.
+  bool _programmaticCameraMove = false;
+  DateTime? _lastProgrammaticMoveTime;
+
   double _currentSpeed = 0.0;
   double _lastSpeed = 0.0;
   double _cameraBearing = 0.0; // aktualne wychylenie kamery
@@ -111,6 +116,8 @@ class MapLogicHandler {
     _updateUserMarker(interpolated);
 
     if ((followUser || forceFollowUser) && _controller != null) {
+      _programmaticCameraMove = true;
+      _lastProgrammaticMoveTime = DateTime.now();
       _controller!.moveCamera(CameraUpdate.newCameraPosition(
         CameraPosition(
           target: interpolated,
@@ -166,7 +173,9 @@ class MapLogicHandler {
   }
 
   Widget buildGoogleMap() {
-    return GoogleMap(
+    return Stack(
+      children: [
+        GoogleMap(
       initialCameraPosition: CameraPosition(
         target: _targetLocation ?? const LatLng(52.2297, 21.0122),
         zoom: 17,
@@ -178,7 +187,9 @@ class MapLogicHandler {
         mapReady = true;
 
         if (_targetLocation != null) {
-          _controller!.moveCamera(CameraUpdate.newCameraPosition(
+          _programmaticCameraMove = true;
+      _lastProgrammaticMoveTime = DateTime.now();
+      _controller!.moveCamera(CameraUpdate.newCameraPosition(
             CameraPosition(target: _targetLocation!, zoom: 17, bearing: 0, tilt: 45),
           ));
         }
@@ -188,13 +199,38 @@ class MapLogicHandler {
       zoomControlsEnabled: false,
       markers: _userMarker != null ? {_userMarker!} : {},
       onCameraMoveStarted: () {
-        if (!forceFollowUser) {
+        // If the camera move was not triggered by our code AND
+        // it didn't happen immediately after a programmatic move, treat it as user gesture
+        final now = DateTime.now();
+        final lastProg = _lastProgrammaticMoveTime ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final elapsed = now.difference(lastProg).inMilliseconds;
+        if (!_programmaticCameraMove && elapsed > 400) {
           followUser = false;
+          forceFollowUser = false; // user override
           onUpdate();
         }
       },
+      onCameraIdle: () {
+        // When camera becomes idle, clear the programmatic flag so future user gestures are detected
+        _programmaticCameraMove = false;
+      },
       tiltGesturesEnabled: true,
       rotateGesturesEnabled: true,
+    ),
+        // transparent listener overlay to detect user touch without blocking map gestures
+        Positioned.fill(
+          child: Listener(
+            behavior: HitTestBehavior.translucent,
+            onPointerDown: (_) {
+              // user touched the map -> stop following
+              forceStopFollowingUser();
+            },
+            onPointerUp: (_) {
+              // pointer up - nothing special
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -238,10 +274,20 @@ class MapLogicHandler {
   void enableFollowUser() {
     followUser = forceFollowUser = true;
     if (_targetLocation != null && _controller != null && mapReady) {
+      _programmaticCameraMove = true;
+      _lastProgrammaticMoveTime = DateTime.now();
       _controller!.moveCamera(CameraUpdate.newCameraPosition(
         CameraPosition(target: _targetLocation!, zoom: 17, bearing: _bearing, tilt: 45),
       ));
     }
+    onUpdate();
+  }
+
+
+  /// Force stop following the user (called when user starts panning with touch)
+  void forceStopFollowingUser() {
+    followUser = false;
+    forceFollowUser = false;
     onUpdate();
   }
 

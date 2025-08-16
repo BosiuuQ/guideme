@@ -83,9 +83,56 @@ class NavigationLogic {
   DateTime? get arrivalTime => _arrivalTime;
   String? get maneuver => _maneuver;
 
-  void handleMapCreated(GoogleMapController controller) {
+  
+  // Whether camera should follow the cursor (user's position) in navigation mode.
+  bool followUser = true;
+
+  // When true, a camera movement was initiated programmatically by the app.
+  bool _programmaticCameraMove = false;
+  DateTime? _lastProgrammaticMoveTime;
+void handleMapCreated(GoogleMapController controller) {
     mapController = controller;
     mapController?.setMapStyle(darkMapStyle);
+  }
+
+
+  /// Called by view when the user starts panning the map.
+  void notifyUserPanned() {
+    final now = DateTime.now();
+    final lastProg = _lastProgrammaticMoveTime ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final elapsed = now.difference(lastProg).inMilliseconds;
+    if (!_programmaticCameraMove && elapsed > 400) {
+      followUser = false;
+      onUpdate();
+    }
+  }
+
+  
+
+  /// Force stop following the user (called when user starts panning with touch)
+  void forceStopFollowingUser() {
+    followUser = false;
+    onUpdate();
+  }
+/// Called by view when the camera becomes idle after a programmatic move.
+  void notifyProgrammaticIdle() {
+    _programmaticCameraMove = false;
+  }
+
+  /// Re-enable following the cursor and instantly center the camera on current position.
+  void enableFollowUser() {
+    followUser = true;
+    if (mapController != null && currentPosition != null) {
+      _programmaticCameraMove = true;
+      _lastProgrammaticMoveTime = DateTime.now();
+      mapController!.moveCamera(CameraUpdate.newCameraPosition(CameraPosition(
+        target: currentPosition!,
+        bearing: _cameraBearing,
+        zoom: 18,
+        tilt: 45,
+      )));
+    }
+    onUpdate();
   }
 
   Future<void> initLogic(BuildContext context) async {
@@ -237,7 +284,9 @@ class NavigationLogic {
         _cameraBearing = _lerpAngle(_cameraBearing, bearing, tBearing);
       }
 
-      if (mapController != null) {
+      if (mapController != null && followUser) {
+        _programmaticCameraMove = true;
+        _lastProgrammaticMoveTime = DateTime.now();
         mapController!.moveCamera(CameraUpdate.newCameraPosition(CameraPosition(
           target: interpolated,
           bearing: _cameraBearing,

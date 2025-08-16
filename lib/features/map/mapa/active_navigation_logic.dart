@@ -268,30 +268,47 @@ double _lerpAngle(double a, double b, double t) {
     _arrivalTime = DateTime.now().add(Duration(minutes: durationMinutes));
   }
 
+  DateTime? _lastRecalc;
+
   void _updateLiveNavigationData(BuildContext context) {
     if (_targetLocation == null || steps.isEmpty) return;
     final currentStep = steps[currentStepIndex];
-    final stepEnd = LatLng(currentStep['end_location']['lat'], currentStep['end_location']['lng']);
+    final stepEnd = LatLng(
+      currentStep['end_location']['lat'],
+      currentStep['end_location']['lng'],
+    );
+
+    // odległość do końca aktualnego kroku
     final distanceToStepEnd = _calculateDistance(_targetLocation!, stepEnd) * 1000;
     _distanceToNextTurn = distanceToStepEnd;
 
-    if (distanceToStepEnd < 100 && currentStepIndex < steps.length - 1) {
+    // zalicz krok dopiero poniżej 40 m
+    if (distanceToStepEnd < 40 && currentStepIndex < steps.length - 1) {
       currentStepIndex++;
       _updateNextInstruction();
     }
 
+    // odległość do początku kroku (sprawdzenie czy nie wypadliśmy z trasy)
     final distanceToStepStart = _calculateDistance(
       _targetLocation!,
-      LatLng(currentStep['start_location']['lat'], currentStep['start_location']['lng']),
+      LatLng(
+        currentStep['start_location']['lat'],
+        currentStep['start_location']['lng'],
+      ),
     ) * 1000;
 
     if (distanceToStepStart > 100) {
-      fetchRouteSteps();
-      onRecalculated('Zmieniono trasę — przeliczono nową trasę');
+      final now = DateTime.now();
+      if (_lastRecalc == null || now.difference(_lastRecalc!).inSeconds > 10) {
+        fetchRouteSteps();
+        onRecalculated('Zmieniono trasę — przeliczono nową trasę');
+        _lastRecalc = now;
+      }
     }
 
     _calculateETA();
   }
+
 
   void _updateNextInstruction() {
     if (steps.isEmpty) return;

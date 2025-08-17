@@ -469,11 +469,10 @@ double _lerpAngle(double a, double b, double t) {
       ),
     ) * 1000;
 
-    if (distanceToStepStart > 80) {
+    if (distanceToStepStart > 20) {
       final now = DateTime.now();
       if (_lastRecalc == null || now.difference(_lastRecalc!).inSeconds > 10) {
         fetchRouteSteps();
-        onRecalculated('Zmieniono trasę — przeliczono nową trasę');
         _lastRecalc = now;
       }
     }

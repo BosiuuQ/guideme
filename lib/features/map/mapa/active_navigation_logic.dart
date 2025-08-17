@@ -77,6 +77,28 @@ class NavigationLogic {
   double get distanceToNextTurn => _distanceToNextTurn;
 
   // expose smoothed camera bearing for views
+  // expose current step index for external UI and persistence
+  int get currentStep => currentStepIndex;
+
+  // points representing the already traversed section of the route (for darker polyline)
+  List<LatLng> get traversedPolylinePoints {
+    if (currentPosition == null || fullRoutePolyline.isEmpty) return [];
+    // find nearest point index on the full route to current position
+    int nearestIdx = 0;
+    double nearestDist = double.infinity;
+    for (int i = 0; i < fullRoutePolyline.length; i++) {
+      final d = _calculateDistance(currentPosition!, fullRoutePolyline[i]) * 1000;
+      if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
+    }
+    final List<LatLng> pts = [];
+    if (nearestIdx >= 0) {
+      pts.addAll(fullRoutePolyline.sublist(0, nearestIdx + 1));
+    }
+    // append exact current position to close the polyline
+    pts.add(currentPosition!);
+    return pts;
+  }
+
   double get cameraBearing => _cameraBearing;
   double get remainingDistance => _remainingDistance;
   int get remainingDuration => _remainingDuration;
@@ -317,30 +339,66 @@ double _lerpAngle(double a, double b, double t) {
     _arrivalTime = DateTime.now().add(Duration(minutes: durationMinutes));
   }
 
+  DateTime? _lastRecalc;
+
   void _updateLiveNavigationData(BuildContext context) {
     if (_targetLocation == null || steps.isEmpty) return;
     final currentStep = steps[currentStepIndex];
-    final stepEnd = LatLng(currentStep['end_location']['lat'], currentStep['end_location']['lng']);
+    final stepEnd = LatLng(
+      currentStep['end_location']['lat'],
+      currentStep['end_location']['lng'],
+    );
+
+    // odległość do końca aktualnego kroku
     final distanceToStepEnd = _calculateDistance(_targetLocation!, stepEnd) * 1000;
     _distanceToNextTurn = distanceToStepEnd;
 
-    if (distanceToStepEnd < 100 && currentStepIndex < steps.length - 1) {
+    // zalicz krok dopiero poniżej 40 m
+    if (distanceToStepEnd < 40 && currentStepIndex < steps.length - 1) {
       currentStepIndex++;
       _updateNextInstruction();
+    } else {
+      // additionally detect if user skipped ahead (e.g., GPS jumps or fast travel)
+      // find nearest step end to the user's current position
+      int nearestIdx = currentStepIndex;
+      double nearestDist = distanceToStepEnd;
+      for (int i = 0; i < steps.length; i++) {
+        final sEnd = LatLng(steps[i]['end_location']['lat'], steps[i]['end_location']['lng']);
+        final d = _calculateDistance(_targetLocation!, sEnd) * 1000;
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearestIdx = i;
+        }
+      }
+      // if a nearer step end is found within a reasonable threshold, jump to that step
+      if (nearestIdx != currentStepIndex && nearestDist < 80) {
+        currentStepIndex = nearestIdx;
+        _updateNextInstruction();
+        _distanceToNextTurn = nearestDist;
+      }
     }
 
+    // odległość do początku kroku (sprawdzenie czy nie wypadliśmy z trasy)
     final distanceToStepStart = _calculateDistance(
       _targetLocation!,
-      LatLng(currentStep['start_location']['lat'], currentStep['start_location']['lng']),
+      LatLng(
+        currentStep['start_location']['lat'],
+        currentStep['start_location']['lng'],
+      ),
     ) * 1000;
 
     if (distanceToStepStart > 100) {
-      fetchRouteSteps();
-      onRecalculated('Zmieniono trasę — przeliczono nową trasę');
+      final now = DateTime.now();
+      if (_lastRecalc == null || now.difference(_lastRecalc!).inSeconds > 10) {
+        fetchRouteSteps();
+        onRecalculated('Zmieniono trasę — przeliczono nową trasę');
+        _lastRecalc = now;
+      }
     }
 
     _calculateETA();
   }
+
 
   void _updateNextInstruction() {
     if (steps.isEmpty) return;
@@ -362,11 +420,54 @@ double _lerpAngle(double a, double b, double t) {
     return match?.group(1);
   }
 
-  String? _getNextInstruction() {
-    return 'Za ${_distanceToNextTurn.toStringAsFixed(0)} m skręć ${_maneuver == 'left' ? 'w lewo' : _maneuver == 'right' ? 'w prawo' : 'prosto'}';
+  
+
+String? _getNextInstruction() {
+    if (steps.isEmpty) return null;
+    final nextIndex = (currentStepIndex + 1);
+    if (nextIndex >= steps.length) return null;
+    final nextStep = steps[nextIndex];
+    final m = (nextStep['maneuver'] ?? 'straight').toString();
+    final instructionRaw = (nextStep['html_instructions'] ?? '').toString().replaceAll(RegExp(r'<[^>]*>'), '');
+    final instructionLower = instructionRaw.toLowerCase();
+
+    // specialized handling for roundabouts and exits
+    if (m.contains('roundabout') || instructionLower.contains('roundabout') || instructionLower.contains('rondo') || instructionLower.contains('rondo')) {
+      // try to extract exit number from english or polish instructions
+      final exitMatch = RegExp(r'exit (\d+)', caseSensitive: false).firstMatch(instructionRaw) ??
+                        RegExp(r'zjazd (\d+)', caseSensitive: false).firstMatch(instructionRaw) ??
+                        RegExp(r'\b(\d+)(?:st|nd|rd|th) exit\b', caseSensitive: false).firstMatch(instructionRaw);
+      if (exitMatch != null) {
+        final exitNum = exitMatch.group(1);
+        return 'na rondzie: zjedź $exitNum. zjazdem';
+      } else {
+        return 'na rondzie: zjedź odpowiednim zjazdem';
+      }
+    }
+
+    if (m.contains('left')) {
+      return 'skręć w lewo';
+    } else if (m.contains('right')) {
+      return 'skręć w prawo';
+    } else if (m == 'straight') {
+      return 'jedź prosto';
+    } else if (m == 'merge') {
+      return 'włącz się do ruchu';
+    } else if (m.startsWith('uturn')) {
+      return 'zawróć';
+    } else if (instructionLower.contains('exit') || instructionLower.contains('zjazd') || instructionLower.contains('zjazdu')) {
+      // fallback: mention exit/zjazd found in textual instruction
+      final ex = RegExp(r'(zjazd|exit).{0,20}?(\d+)', caseSensitive: false).firstMatch(instructionRaw);
+      if (ex != null && ex.groupCount >= 2) {
+        return 'zjedź ${ex.group(2)}. zjazdem';
+      }
+      return 'zjedź zjazdem';
+    } else {
+      return 'kontynuuj';
+    }
   }
 
-  List<LatLng> _decodePolyline(String encoded) {
+List<LatLng> _decodePolyline(String encoded) {
     List<LatLng> polyline = [];
     int index = 0, len = encoded.length;
     int lat = 0, lng = 0;

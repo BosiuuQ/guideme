@@ -113,12 +113,21 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
             ),
             onMapCreated: (controller) { _logic.handleMapCreated(controller); _updateCursorScreenPosition(); },
             polylines: {
+              // full planned route (faded)
               Polyline(
                 polylineId: const PolylineId('full_route'),
-                color: Colors.cyanAccent,
+                color: Colors.cyanAccent.withOpacity(0.6),
                 width: 6,
                 points: _logic.polylinePoints,
-              )
+              ),
+              // traversed route (darker)
+              if (_logic.traversedPolylinePoints.isNotEmpty)
+                Polyline(
+                  polylineId: const PolylineId('traversed_route'),
+                  color: Colors.blueGrey,
+                  width: 8,
+                  points: _logic.traversedPolylinePoints,
+                )
             },
             
             markers: {
@@ -244,11 +253,23 @@ Positioned(
                   ],
                 ),
               ),
+            )),
+
+          // Navigation instruction bar (shows next maneuver and distance)
+          Positioned(
+            left: 16,
+            right: 16,
+            top: 30,
+            child: NavigationInstructionBar(
+              maneuverType: _logic.maneuverType ?? 'straight',
+              distanceMeters: _logic.distanceToNextTurn ?? 0.0,
+              nextManeuverText: _logic.nextInstruction,
+              streetName: _logic.streetName,
             ),
           ),
-],
-      ),
-    );
+
+          ]));
+
   }
 
   Widget _infoTile(IconData icon, String text) {

@@ -25,6 +25,9 @@ class NavigationInstructionBar extends StatelessWidget {
         return Icons.arrow_upward;
       case 'merge':
         return Icons.merge_type;
+      case 'roundabout':
+      case 'rande':
+        return Icons.loop;
       case 'uturn-right':
       case 'uturn-left':
         return Icons.u_turn_left;
@@ -104,6 +107,8 @@ class NavigationInstructionBar extends StatelessWidget {
         return 'skręć w lewo';
       case 'merge':
         return 'włącz się do ruchu';
+      case 'roundabout':
+        return 'na rondzie: zjedź odpowiednim zjazdem';
       case 'uturn-left':
       case 'uturn-right':
         return 'zawróć';

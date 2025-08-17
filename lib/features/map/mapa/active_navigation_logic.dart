@@ -471,7 +471,7 @@ double _lerpAngle(double a, double b, double t) {
 
     if (distanceToStepStart > 20) {
       final now = DateTime.now();
-      if (_lastRecalc == null || now.difference(_lastRecalc!).inSeconds > 10) {
+      if (_lastRecalc == null || now.difference(_lastRecalc!).inSeconds > 3) {
         fetchRouteSteps();
         _lastRecalc = now;
       }

@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import 'package:guide_me/core/config/routing/app_routes.dart';
 import 'package:guide_me/features/map/mapa/navigation_instruction_bar.dart';
+import 'package:guide_me/features/map/mapa/place_search_view.dart';
 import 'package:guide_me/features/map/mapa/active_navigation_logic.dart';
 
 class ActiveNavigationView extends StatefulWidget {
@@ -26,6 +28,41 @@ class ActiveNavigationView extends StatefulWidget {
 }
 
 class _ActiveNavigationViewState extends State<ActiveNavigationView> {
+  bool _arrivalShown = false;
+
+
+  // Build two points that form a short perpendicular "finish line" at the end of the route.
+  List<LatLng> _buildFinishLine(List<LatLng> route, {double halfLengthMeters = 12.0}) {
+    if (route.length < 2) return [];
+    final LatLng end = route.last;
+    final LatLng prev = route[route.length - 2];
+
+    // Local meter conversion at end latitude
+    final double latRad = end.latitude * 3.141592653589793 / 180.0;
+    final double mPerDegLat = 111320.0;
+    final double mPerDegLon = 111320.0 * cos(latRad);
+
+    double x(LatLng q) => (q.longitude - end.longitude) * mPerDegLon;
+    double y(LatLng q) => (q.latitude - end.latitude) * mPerDegLat;
+    LatLng latLng(double x, double y) => LatLng(
+      end.latitude + (y / mPerDegLat),
+      end.longitude + (x / mPerDegLon),
+    );
+
+    final double vx = x(end) - x(prev);
+    final double vy = y(end) - y(prev);
+    // Perpendicular vector (normalize)
+    final double len = sqrt(vx * vx + vy * vy);
+    double px = 0.0, py = 0.0;
+    if (len > 0.0) {
+      px = -vy / len;
+      py = vx / len;
+    }
+    final LatLng p1 = latLng(px * halfLengthMeters, py * halfLengthMeters);
+    final LatLng p2 = latLng(-px * halfLengthMeters, -py * halfLengthMeters);
+    return [p1, p2];
+  }
+
   Offset? _cursorScreenPosition;
   final double _haloSize = 42.0;
   final double _innerSize = 18.0;
@@ -63,6 +100,70 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
       onUpdate: () {
       if (mounted) setState(() {});
       _updateCursorScreenPosition();
+      if (_logic.isNearDestination && !_arrivalShown) {
+        _arrivalShown = true;
+        _logic.stopNavigation();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.grey[850],
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            builder: (ctx) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 18.0, horizontal: 18.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: const [
+                      Icon(Icons.emoji_flags, color: Colors.green, size: 34),
+                      SizedBox(width: 12),
+                      Expanded(child: Text('Dojechałeś do celu', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text('Trasa została ukończona. Możesz zakończyć nawigację lub wybrać kolejną trasę.', style: TextStyle(fontSize: 14),),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            showModalBottomSheet(
+                              context: context,
+                              isScrollControlled: true,
+                              backgroundColor: Colors.grey[850],
+                              shape: const RoundedRectangleBorder(
+                                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                              ),
+                              builder: (_) => PlaceSearchSheet(currentLocation: _logic.currentPosition),
+                            );
+                          },
+                          child: const Text('Wybierz następną trasę'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            context.goNamed(AppRoutes.mainView);
+                          },
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                          child: const Text('Zakończ nawigację'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
+          );
+        });
+      }
     },
       onRecalculated: (_) {
         if (mounted) {
@@ -127,8 +228,18 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
                   color: Colors.blueGrey,
                   width: 8,
                   points: _logic.traversedPolylinePoints,
-                )
-            },
+                ),
+            
+
+              // finish line when close to destination (~150 m)
+              if (_logic.isNearDestination)
+                Polyline(
+                  polylineId: const PolylineId('finish_line'),
+                  points: _buildFinishLine(_logic.polylinePoints),
+                  color: Colors.grey.shade800,
+                  width: 10,
+                ),
+},
             
             markers: {
               Marker(
@@ -216,14 +327,17 @@ Positioned(
                       padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                     ),
-                    child: const Text("Zakończ nawigację", style: TextStyle(color: Colors.white, fontSize: 16)),
+                    child: Text("Zakończ nawigację", style: TextStyle(color: Colors.grey[850], fontSize: 16)),
                   )
                 ],
               ),
             ),
           ),
         
-          // Overlay cursor drawn above map labels (same visual as previous map circles).
+          
+          
+
+// Overlay cursor drawn above map labels (same visual as previous map circles).
           if (_logic.currentPosition != null) Positioned(
             left: (_cursorScreenPosition?.dx ?? (MediaQuery.of(context).size.width / 2)) - (_haloSize / 2),
             top: (_cursorScreenPosition?.dy ?? (MediaQuery.of(context).size.height / 2)) - (_haloSize / 2),
@@ -277,7 +391,7 @@ Positioned(
       children: [
         Icon(icon, color: Colors.white70, size: 22),
         const SizedBox(height: 6),
-        Text(text, style: const TextStyle(color: Colors.white, fontSize: 14)),
+        Text(text, style: TextStyle(color: Colors.grey[850], fontSize: 14)),
       ],
     );
   }

@@ -11,6 +11,68 @@ import 'package:http/http.dart' as http;
 import 'package:guide_me/features/map/mapa/dark_map_style.dart';
 import 'package:guide_me/features/map/distance_tracker.dart';
 
+
+// --- Snapping helpers (top-level) ---
+class _SnapResult {
+  final LatLng point;
+  // index of the segment's end vertex (i+1), so sublist(0, index) covers vertices before the snapped point.
+  final int segmentIndex;
+  // distance in meters from original point to snapped point
+  final double distanceM;
+  const _SnapResult(this.point, this.segmentIndex, this.distanceM);
+}
+
+// Snap a geographic point to the closest segment of the given polyline.
+_SnapResult _snapToRoute(LatLng p, List<LatLng> poly) {
+  if (poly.isEmpty) return _SnapResult(p, 0, 0);
+  if (poly.length == 1) return _SnapResult(poly.first, 1, 0);
+
+  double bestDist = double.infinity;
+  LatLng bestPoint = poly.first;
+  int bestSegEnd = 1;
+
+  // Precompute meter scale at latitude for lon->meters conversion
+  final double latRad = p.latitude * pi / 180.0;
+  final double mPerDegLat = 111320.0;
+  final double mPerDegLon = 111320.0 * cos(latRad);
+
+  // Local conversion helpers
+  double _x(LatLng q) => (q.longitude - p.longitude) * mPerDegLon;
+  double _y(LatLng q) => (q.latitude - p.latitude) * mPerDegLat;
+  LatLng _latLng(double x, double y) => LatLng(
+    p.latitude + (y / mPerDegLat),
+    p.longitude + (x / mPerDegLon),
+  );
+
+  for (int i = 0; i < poly.length - 1; i++) {
+    final LatLng a = poly[i];
+    final LatLng b = poly[i + 1];
+    final double ax = _x(a), ay = _y(a);
+    final double bx = _x(b), by = _y(b);
+    final double abx = bx - ax, aby = by - ay;
+    final double apx = -ax, apy = -ay; // vector from a to p in local coords (p at 0,0)
+    final double ab2 = abx * abx + aby * aby;
+    double t = 0.0;
+    if (ab2 > 0.0) {
+      t = (apx * abx + apy * aby) / ab2; // projection factor
+    }
+    if (t < 0.0) t = 0.0;
+    if (t > 1.0) t = 1.0;
+    final double sx = ax + t * abx;
+    final double sy = ay + t * aby;
+    final double dx = sx; // since p is at (0,0)
+    final double dy = sy;
+    final double dist = sqrt(dx * dx + dy * dy);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestPoint = _latLng(sx, sy);
+      bestSegEnd = i + 1;
+    }
+  }
+  return _SnapResult(bestPoint, bestSegEnd, bestDist);
+}
+// --- End snapping helpers ---
+
 class NavigationLogic {
   final List<LatLng> routePoints;
   final LatLng destination;
@@ -63,6 +125,15 @@ class NavigationLogic {
     required this.onUpdate,
     required this.onRecalculated,
   });
+  /// Stop only the live updates but keep route data.
+  void stopNavigation() {
+    positionStream?.cancel();
+    positionStream = null;
+    interpolationTimer?.cancel();
+    interpolationTimer = null;
+  }
+
+
 
   void dispose() {
     positionStream?.cancel();
@@ -81,25 +152,36 @@ class NavigationLogic {
   int get currentStep => currentStepIndex;
 
   // points representing the already traversed section of the route (for darker polyline)
+  
+  // points representing the already traversed section of the route (for darker polyline).
+  // We *snap* progress to the planned route so that when the user is off-route
+  // we **do not** draw a straight segment to the cursor.
   List<LatLng> get traversedPolylinePoints {
-    if (currentPosition == null || fullRoutePolyline.isEmpty) return [];
-    // find nearest point index on the full route to current position
-    int nearestIdx = 0;
-    double nearestDist = double.infinity;
-    for (int i = 0; i < fullRoutePolyline.length; i++) {
-      final d = _calculateDistance(currentPosition!, fullRoutePolyline[i]) * 1000;
-      if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
+    // If remaining route distance is short (<=150 m), treat whole route as traversed
+    if (_remainingDistance * 1000.0 <= 150.0 && fullRoutePolyline.isNotEmpty) {
+      return List<LatLng>.from(fullRoutePolyline);
     }
+    if (fullRoutePolyline.isEmpty) return [];
+    final LatLng pos = currentPosition ?? (fullRoutePolyline.first);
+    final _SnapResult snap = _snapToRoute(pos, fullRoutePolyline);
+    // take all vertices up to the snapped segment index, then add the exact snapped point
     final List<LatLng> pts = [];
-    if (nearestIdx >= 0) {
-      pts.addAll(fullRoutePolyline.sublist(0, nearestIdx + 1));
+    final int upto = snap.segmentIndex; // index of the segment's end vertex
+    if (upto > 0) {
+      pts.addAll(fullRoutePolyline.sublist(0, upto));
     }
-    // append exact current position to close the polyline
-    pts.add(currentPosition!);
+    pts.add(snap.point);
     return pts;
   }
 
-  double get cameraBearing => _cameraBearing;
+
+
+  
+  // Whether we are within ~150 meters of the destination (used to show "META"/arrival UI).
+  bool get isNearDestination {
+    // Consider remaining route distance (along route) for arrival.
+    return (_remainingDistance * 1000.0) <= 150.0;
+  }double get cameraBearing => _cameraBearing;
   double get remainingDistance => _remainingDistance;
   int get remainingDuration => _remainingDuration;
   DateTime? get arrivalTime => _arrivalTime;

@@ -286,7 +286,7 @@ void handleMapCreated(GoogleMapController controller) {
   }
 
   Future<void> fetchRouteSteps() async {
-    final start = routePoints.first;
+    final start = currentPosition ?? routePoints.first;
     final end = routePoints.last;
     final url = Uri.parse(
       'https://maps.googleapis.com/maps/api/directions/json?origin=${start.latitude},${start.longitude}&destination=${end.latitude},${end.longitude}&language=pl&key=AIzaSyCvEzWl7SGN5LEAbaIs7nN91M7We3VHr5E');
@@ -469,7 +469,7 @@ double _lerpAngle(double a, double b, double t) {
       ),
     ) * 1000;
 
-    if (distanceToStepStart > 100) {
+    if (distanceToStepStart > 80) {
       final now = DateTime.now();
       if (_lastRecalc == null || now.difference(_lastRecalc!).inSeconds > 10) {
         fetchRouteSteps();

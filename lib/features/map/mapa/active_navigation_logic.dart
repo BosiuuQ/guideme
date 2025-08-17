@@ -435,16 +435,17 @@ double _lerpAngle(double a, double b, double t) {
     final distanceToStepEnd = _calculateDistance(_targetLocation!, stepEnd) * 1000;
     _distanceToNextTurn = distanceToStepEnd;
 
-    // zalicz krok dopiero poniżej 40 m
-    if (distanceToStepEnd < 40 && currentStepIndex < steps.length - 1) {
+    // zalicz krok dopiero poniżej 10 m
+    if (distanceToStepEnd < 10 && currentStepIndex < steps.length - 1) {
       currentStepIndex++;
       _updateNextInstruction();
     } else {
       // additionally detect if user skipped ahead (e.g., GPS jumps or fast travel)
       // find nearest step end to the user's current position
+      int maxLookAhead = 2;
       int nearestIdx = currentStepIndex;
       double nearestDist = distanceToStepEnd;
-      for (int i = 0; i < steps.length; i++) {
+      for (int i = currentStepIndex; i < min(currentStepIndex + maxLookAhead, steps.length); i++) {
         final sEnd = LatLng(steps[i]['end_location']['lat'], steps[i]['end_location']['lng']);
         final d = _calculateDistance(_targetLocation!, sEnd) * 1000;
         if (d < nearestDist) {
@@ -452,8 +453,7 @@ double _lerpAngle(double a, double b, double t) {
           nearestIdx = i;
         }
       }
-      // if a nearer step end is found within a reasonable threshold, jump to that step
-      if (nearestIdx != currentStepIndex && nearestDist < 80) {
+      if (nearestIdx > currentStepIndex && nearestDist < 80) {
         currentStepIndex = nearestIdx;
         _updateNextInstruction();
         _distanceToNextTurn = nearestDist;

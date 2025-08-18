@@ -31,13 +31,11 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
   bool _arrivalShown = false;
 
 
-  // Build two points that form a short perpendicular "finish line" at the end of the route.
   List<LatLng> _buildFinishLine(List<LatLng> route, {double halfLengthMeters = 12.0}) {
     if (route.length < 2) return [];
     final LatLng end = route.last;
     final LatLng prev = route[route.length - 2];
 
-    // Local meter conversion at end latitude
     final double latRad = end.latitude * 3.141592653589793 / 180.0;
     final double mPerDegLat = 111320.0;
     final double mPerDegLon = 111320.0 * cos(latRad);
@@ -51,7 +49,6 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
 
     final double vx = x(end) - x(prev);
     final double vy = y(end) - y(prev);
-    // Perpendicular vector (normalize)
     final double len = sqrt(vx * vx + vy * vy);
     double px = 0.0, py = 0.0;
     if (len > 0.0) {
@@ -142,7 +139,17 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
                               builder: (_) => PlaceSearchSheet(currentLocation: _logic.currentPosition),
                             );
                           },
-                          child: const Text('Wybierz następną trasę'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: BorderSide(color: Colors.white24),
+                            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                            textStyle: const TextStyle(fontSize: 14),
+                          ),
+                          child: const Text(
+                            'Wybierz następną trasę',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -151,7 +158,7 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
                           onPressed: () {
                             context.goNamed(AppRoutes.mainView);
                           },
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.grey[850]),
                           child: const Text('Zakończ nawigację'),
                         ),
                       ),
@@ -174,7 +181,6 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
       },
     );
     WidgetsBinding.instance.addPostFrameCallback((_) => _logic.initLogic(context));
-    // start periodic cursor updater
     _cursorTimer = Timer.periodic(const Duration(milliseconds: 250), (_) => _updateCursorScreenPosition());
 
   }
@@ -214,14 +220,12 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
             ),
             onMapCreated: (controller) { _logic.handleMapCreated(controller); _updateCursorScreenPosition(); },
             polylines: {
-              // full planned route (faded)
               Polyline(
                 polylineId: const PolylineId('full_route'),
                 color: Colors.cyanAccent.withOpacity(0.6),
                 width: 6,
                 points: _logic.polylinePoints,
               ),
-              // traversed route (darker)
               if (_logic.traversedPolylinePoints.isNotEmpty)
                 Polyline(
                   polylineId: const PolylineId('traversed_route'),
@@ -229,9 +233,7 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
                   width: 8,
                   points: _logic.traversedPolylinePoints,
                 ),
-            
 
-              // finish line when close to destination (~150 m)
               if (_logic.isNearDestination)
                 Polyline(
                   polylineId: const PolylineId('finish_line'),
@@ -263,7 +265,6 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> {
           
 ),
 
-          // Transparent listener overlay to detect user panning gestures without blocking the map.
           Positioned.fill(
             child: Listener(
               behavior: HitTestBehavior.translucent,
@@ -298,46 +299,6 @@ Positioned(
             ),
           ),
 
-          Positioned(
-            bottom: 30,
-            left: 15,
-            right: 15,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-              decoration: BoxDecoration(
-                color: Colors.grey[900],
-                borderRadius: BorderRadius.circular(25),
-                boxShadow: [BoxShadow(color: Colors.black54, blurRadius: 8)],
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _infoTile(Icons.timer, '${_logic.remainingDuration} min'),
-                      _infoTile(Icons.pin_drop, '${_logic.remainingDistance.toStringAsFixed(1)} km'),
-                      _infoTile(Icons.access_time, _logic.arrivalTime != null ? DateFormat('HH:mm').format(_logic.arrivalTime!) : '--:--'),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  ElevatedButton(
-                    onPressed: () => context.goNamed(AppRoutes.mainView),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.redAccent,
-                      padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    ),
-                    child: Text("Zakończ nawigację", style: TextStyle(color: Colors.grey[850], fontSize: 16)),
-                  )
-                ],
-              ),
-            ),
-          ),
-        
-          
-          
-
-// Overlay cursor drawn above map labels (same visual as previous map circles).
           if (_logic.currentPosition != null) Positioned(
             left: (_cursorScreenPosition?.dx ?? (MediaQuery.of(context).size.width / 2)) - (_haloSize / 2),
             top: (_cursorScreenPosition?.dy ?? (MediaQuery.of(context).size.height / 2)) - (_haloSize / 2),
@@ -369,7 +330,6 @@ Positioned(
               ),
             )),
 
-          // Navigation instruction bar (shows next maneuver and distance)
           Positioned(
             left: 16,
             right: 16,
@@ -379,10 +339,55 @@ Positioned(
               distanceMeters: _logic.distanceToNextTurn ?? 0.0,
               nextManeuverText: _logic.nextInstruction,
               streetName: _logic.streetName,
+              steps: _logic.steps,
+              currentStepIndex: _logic.currentStepIndex,
             ),
           ),
 
-          ]));
+          
+
+Positioned(
+            bottom: 30,
+            left: 15,
+            right: 15,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+              decoration: BoxDecoration(
+                color: Colors.grey[900],
+                borderRadius: BorderRadius.circular(25),
+                boxShadow: [BoxShadow(color: Colors.black54, blurRadius: 8)],
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _infoTile(Icons.timer, '${_logic.remainingDuration} min'),
+                      _infoTile(Icons.pin_drop, '${_logic.remainingDistance.toStringAsFixed(1)} km'),
+                      _infoTile(Icons.access_time, _logic.arrivalTime != null ? DateFormat('HH:mm').format(_logic.arrivalTime!) : '--:--'),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  ElevatedButton(
+                    onPressed: () => context.goNamed(AppRoutes.mainView),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.redAccent,
+                      padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    ),
+                    child: Text("Zakończ nawigację", style: TextStyle(color: Colors.white, fontSize: 16)),
+                  )
+                ],
+              ),
+            ),
+          ),
+        
+          
+          
+
+
+
+]));
 
   }
 
@@ -391,11 +396,11 @@ Positioned(
       children: [
         Icon(icon, color: Colors.white70, size: 22),
         const SizedBox(height: 6),
-        Text(text, style: TextStyle(color: Colors.grey[850], fontSize: 14)),
+        Text(text, style: TextStyle(color: Colors.white, fontSize: 14)),
       ],
     );
   }
 }
 
-          // Overlay cursor drawn above map labels (same visual as previous map circles).
+
           

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -11,6 +10,11 @@ class DistanceTracker {
   bool _initialized = false;
 
   final supabase = Supabase.instance.client;
+
+  // 🚗 Limity anty-cheat
+  static const double maxSpeed = 100;   // ~360 km/h
+  static const double maxJump = 1000;   // maksymalny skok 1 km
+  static const double minMovement = 2;  // ignorujemy <2m (szum GPS)
 
   Future<void> initialize() async {
     final userId = supabase.auth.currentUser?.id;
@@ -61,9 +65,18 @@ class DistanceTracker {
         currentPosition.longitude,
       );
 
-      print('↔️ [DistanceTracker] Przemieszczono się o: ${distance.toStringAsFixed(2)} m');
+      final timeDiff = currentPosition.timestamp != null && _lastPosition!.timestamp != null
+          ? currentPosition.timestamp!.difference(_lastPosition!.timestamp!).inSeconds
+          : 1; // jeśli brak timestamp → zakładamy 1 sekundę
 
-      if (distance > 2) {
+      final speed = distance / (timeDiff > 0 ? timeDiff : 1); // m/s
+
+      print('↔️ [DistanceTracker] Dystans: ${distance.toStringAsFixed(2)} m, czas: ${timeDiff}s, prędkość: ${speed.toStringAsFixed(2)} m/s');
+
+      // ANTY CHEAT
+      if (distance > maxJump || speed > maxSpeed) {
+        print('🚫 [DistanceTracker] Odrzucono punkt – nienaturalny ruch GPS.');
+      } else if (distance > minMovement) {
         _sessionDistance += distance;
         final totalDistanceKm = _initialDistance + (_sessionDistance / 1000);
 
@@ -83,7 +96,7 @@ class DistanceTracker {
           print('❗ [DistanceTracker] Błąd przy zapisie do Supabase: $e');
         }
       } else {
-        print('ℹ️ [DistanceTracker] Zmiana poniżej 2m – ignorowana.');
+        print('ℹ️ [DistanceTracker] Zmiana poniżej ${minMovement}m – ignorowana.');
       }
     } else {
       print('🟡 [DistanceTracker] To pierwsza pozycja – nie mierzę jeszcze dystansu.');

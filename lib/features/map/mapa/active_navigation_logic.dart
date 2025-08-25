@@ -1,4 +1,4 @@
-// active_navigation_logic.dart
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -11,18 +11,13 @@ import 'package:http/http.dart' as http;
 import 'package:guide_me/features/map/mapa/dark_map_style.dart';
 import 'package:guide_me/features/map/distance_tracker.dart';
 
-
-// --- Snapping helpers (top-level) ---
 class _SnapResult {
   final LatLng point;
-  // index of the segment's end vertex (i+1), so sublist(0, index) covers vertices before the snapped point.
   final int segmentIndex;
-  // distance in meters from original point to snapped point
   final double distanceM;
   const _SnapResult(this.point, this.segmentIndex, this.distanceM);
 }
 
-// Snap a geographic point to the closest segment of the given polyline.
 _SnapResult _snapToRoute(LatLng p, List<LatLng> poly) {
   if (poly.isEmpty) return _SnapResult(p, 0, 0);
   if (poly.length == 1) return _SnapResult(poly.first, 1, 0);
@@ -31,12 +26,10 @@ _SnapResult _snapToRoute(LatLng p, List<LatLng> poly) {
   LatLng bestPoint = poly.first;
   int bestSegEnd = 1;
 
-  // Precompute meter scale at latitude for lon->meters conversion
   final double latRad = p.latitude * pi / 180.0;
   final double mPerDegLat = 111320.0;
   final double mPerDegLon = 111320.0 * cos(latRad);
 
-  // Local conversion helpers
   double _x(LatLng q) => (q.longitude - p.longitude) * mPerDegLon;
   double _y(LatLng q) => (q.latitude - p.latitude) * mPerDegLat;
   LatLng _latLng(double x, double y) => LatLng(
@@ -50,17 +43,17 @@ _SnapResult _snapToRoute(LatLng p, List<LatLng> poly) {
     final double ax = _x(a), ay = _y(a);
     final double bx = _x(b), by = _y(b);
     final double abx = bx - ax, aby = by - ay;
-    final double apx = -ax, apy = -ay; // vector from a to p in local coords (p at 0,0)
+    final double apx = -ax, apy = -ay;
     final double ab2 = abx * abx + aby * aby;
     double t = 0.0;
     if (ab2 > 0.0) {
-      t = (apx * abx + apy * aby) / ab2; // projection factor
+      t = (apx * abx + apy * aby) / ab2;
     }
     if (t < 0.0) t = 0.0;
     if (t > 1.0) t = 1.0;
     final double sx = ax + t * abx;
     final double sy = ay + t * aby;
-    final double dx = sx; // since p is at (0,0)
+    final double dx = sx;
     final double dy = sy;
     final double dist = sqrt(dx * dx + dy * dy);
     if (dist < bestDist) {
@@ -71,7 +64,6 @@ _SnapResult _snapToRoute(LatLng p, List<LatLng> poly) {
   }
   return _SnapResult(bestPoint, bestSegEnd, bestDist);
 }
-// --- End snapping helpers ---
 
 class NavigationLogic {
   final List<LatLng> routePoints;
@@ -86,10 +78,7 @@ class NavigationLogic {
 
   static const Duration _locationInterval = Duration(milliseconds: 200);
   int _animationDurationMs = _locationInterval.inMilliseconds;
-  // Duration for the bearing (rotation) interpolation in milliseconds.
-  // Set to ~3000ms to make rotations slower and smoother.
   int _bearingAnimationDurationMs = 3000;
-  // Bearing animation bookkeeping
   DateTime? _bearingAnimationStart;
   double _bearingAnimationFrom = 0.0;
   double _bearingAnimationTo = 0.0;
@@ -125,7 +114,6 @@ class NavigationLogic {
     required this.onUpdate,
     required this.onRecalculated,
   });
-  /// Stop only the live updates but keep route data.
   void stopNavigation() {
     positionStream?.cancel();
     positionStream = null;
@@ -142,31 +130,26 @@ class NavigationLogic {
 
   bool get hasError => isError;
   List<LatLng> get polylinePoints => fullRoutePolyline;
-  String? get streetName => roadName;
+  String? get streetName => roadName ?? roadNumber;
   String? get nextInstruction => _getNextInstruction();
   String? get maneuverType => _maneuver;
   double get distanceToNextTurn => _distanceToNextTurn;
 
-  // expose smoothed camera bearing for views
-  // expose current step index for external UI and persistence
+
   int get currentStep => currentStepIndex;
 
-  // points representing the already traversed section of the route (for darker polyline)
-  
-  // points representing the already traversed section of the route (for darker polyline).
-  // We *snap* progress to the planned route so that when the user is off-route
-  // we **do not** draw a straight segment to the cursor.
+
   List<LatLng> get traversedPolylinePoints {
-    // If remaining route distance is short (<=150 m), treat whole route as traversed
-    if (_remainingDistance * 1000.0 <= 150.0 && fullRoutePolyline.isNotEmpty) {
+
+    if (_remainingDistance * 1000.0 <= 50.0 && fullRoutePolyline.isNotEmpty) {
       return List<LatLng>.from(fullRoutePolyline);
     }
     if (fullRoutePolyline.isEmpty) return [];
     final LatLng pos = currentPosition ?? (fullRoutePolyline.first);
     final _SnapResult snap = _snapToRoute(pos, fullRoutePolyline);
-    // take all vertices up to the snapped segment index, then add the exact snapped point
+
     final List<LatLng> pts = [];
-    final int upto = snap.segmentIndex; // index of the segment's end vertex
+    final int upto = snap.segmentIndex;
     if (upto > 0) {
       pts.addAll(fullRoutePolyline.sublist(0, upto));
     }
@@ -177,10 +160,10 @@ class NavigationLogic {
 
 
   
-  // Whether we are within ~150 meters of the destination (used to show "META"/arrival UI).
+
   bool get isNearDestination {
-    // Consider remaining route distance (along route) for arrival.
-    return (_remainingDistance * 1000.0) <= 150.0;
+
+    return (_remainingDistance * 1000.0) <= 50.0;
   }double get cameraBearing => _cameraBearing;
   double get remainingDistance => _remainingDistance;
   int get remainingDuration => _remainingDuration;
@@ -188,10 +171,10 @@ class NavigationLogic {
   String? get maneuver => _maneuver;
 
   
-  // Whether camera should follow the cursor (user's position) in navigation mode.
+
   bool followUser = true;
 
-  // When true, a camera movement was initiated programmatically by the app.
+
   bool _programmaticCameraMove = false;
   DateTime? _lastProgrammaticMoveTime;
 void handleMapCreated(GoogleMapController controller) {
@@ -200,7 +183,7 @@ void handleMapCreated(GoogleMapController controller) {
   }
 
 
-  /// Called by view when the user starts panning the map.
+
   void notifyUserPanned() {
     final now = DateTime.now();
     final lastProg = _lastProgrammaticMoveTime ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -213,17 +196,17 @@ void handleMapCreated(GoogleMapController controller) {
 
   
 
-  /// Force stop following the user (called when user starts panning with touch)
+
   void forceStopFollowingUser() {
     followUser = false;
     onUpdate();
   }
-/// Called by view when the camera becomes idle after a programmatic move.
+
   void notifyProgrammaticIdle() {
     _programmaticCameraMove = false;
   }
 
-  /// Re-enable following the cursor and instantly center the camera on current position.
+
   void enableFollowUser() {
     followUser = true;
     if (mapController != null && currentPosition != null) {
@@ -342,9 +325,7 @@ void handleMapCreated(GoogleMapController controller) {
     positionStream = Geolocator.getPositionStream(locationSettings: locationSettings).listen((position) async {
       _prevLocation = _targetLocation;
       _targetLocation = LatLng(position.latitude, position.longitude);
-      // store new heading target and start bearing animation
       final now = DateTime.now();
-      // start bearing animation from current camera bearing to the new heading
       _bearingAnimationStart = now;
       _bearingAnimationFrom = _cameraBearing;
       _bearingAnimationTo = position.heading;
@@ -360,9 +341,7 @@ void handleMapCreated(GoogleMapController controller) {
     interpolationTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
       if (_prevLocation == null || _targetLocation == null || _lastUpdate == null) return;
       final elapsedMs = DateTime.now().difference(_lastUpdate!).inMilliseconds;
-      // position interpolation factor (keeps position updates responsive)
       final t = (_animationDurationMs > 0) ? (elapsedMs / _animationDurationMs).clamp(0.0, 1.0) : 1.0;
-      // bearing interpolation factor (we want a slower, smoother rotation)
       final tBearing = (_bearingAnimationDurationMs > 0) ? (elapsedMs / _bearingAnimationDurationMs).clamp(0.0, 1.0) : 1.0;
 
       final lat = _lerp(_prevLocation!.latitude, _targetLocation!.latitude, t);
@@ -370,13 +349,11 @@ void handleMapCreated(GoogleMapController controller) {
       final interpolated = LatLng(lat, lng);
       currentPosition = interpolated;
 
-      // use a separate, slower interpolation for camera bearing to stretch the rotate animation
       double interpolatedBearing;
       if (_bearingAnimationStart != null) {
         final elapsedBearing = DateTime.now().difference(_bearingAnimationStart!).inMilliseconds;
         final tb = (_bearingAnimationDurationMs > 0) ? (elapsedBearing / _bearingAnimationDurationMs).clamp(0.0, 1.0) : 1.0;
         interpolatedBearing = _lerpAngle(_bearingAnimationFrom, _bearingAnimationTo, tb);
-        // when finished, nullify the start so we don't keep recalculating
         if (tb >= 1.0) {
           _bearingAnimationStart = null;
           _cameraBearing = _bearingAnimationTo % 360;
@@ -384,7 +361,6 @@ void handleMapCreated(GoogleMapController controller) {
           _cameraBearing = interpolatedBearing % 360;
         }
       } else {
-        // fallback: linear interpolate from current camera bearing to latest bearing
         _cameraBearing = _lerpAngle(_cameraBearing, bearing, tBearing);
       }
 
@@ -431,17 +407,13 @@ double _lerpAngle(double a, double b, double t) {
       currentStep['end_location']['lng'],
     );
 
-    // odległość do końca aktualnego kroku
     final distanceToStepEnd = _calculateDistance(_targetLocation!, stepEnd) * 1000;
     _distanceToNextTurn = distanceToStepEnd;
 
-    // zalicz krok dopiero poniżej 10 m
     if (distanceToStepEnd < 10 && currentStepIndex < steps.length - 1) {
       currentStepIndex++;
       _updateNextInstruction();
     } else {
-      // additionally detect if user skipped ahead (e.g., GPS jumps or fast travel)
-      // find nearest step end to the user's current position
       int maxLookAhead = 2;
       int nearestIdx = currentStepIndex;
       double nearestDist = distanceToStepEnd;
@@ -460,7 +432,6 @@ double _lerpAngle(double a, double b, double t) {
       }
     }
 
-    // odległość do początku kroku (sprawdzenie czy nie wypadliśmy z trasy)
     final distanceToStepStart = _calculateDistance(
       _targetLocation!,
       LatLng(
@@ -471,7 +442,7 @@ double _lerpAngle(double a, double b, double t) {
 
     if (distanceToStepStart > 20) {
       final now = DateTime.now();
-      if (_lastRecalc == null || now.difference(_lastRecalc!).inSeconds > 10) {
+      if (_lastRecalc == null || now.difference(_lastRecalc!).inSeconds > 3) {
         fetchRouteSteps();
         _lastRecalc = now;
       }
@@ -483,12 +454,22 @@ double _lerpAngle(double a, double b, double t) {
 
   void _updateNextInstruction() {
     if (steps.isEmpty) return;
-    final step = steps[currentStepIndex];
-    String instruction = step['html_instructions'] ?? '';
+    final int nextIndex = (currentStepIndex + 1) < steps.length ? (currentStepIndex + 1) : currentStepIndex;
+    final nextStep = steps[nextIndex];
+    String instruction = (nextStep['html_instructions'] ?? '').toString();
     instruction = instruction.replaceAll(RegExp(r'<[^>]*>'), '');
     roadName = _extractRoadName(instruction);
     roadNumber = _extractRoadNumber(instruction);
-    _maneuver = step['maneuver'] ?? 'straight';
+    _maneuver = (nextStep['maneuver'] ?? 'straight').toString();
+
+    try {
+      final startLoc = nextStep['start_location'];
+      if (startLoc != null && _targetLocation != null) {
+        final nextStart = LatLng(startLoc['lat'], startLoc['lng']);
+        _distanceToNextTurn = _calculateDistance(_targetLocation!, nextStart) * 1000.0;
+      }
+    } catch (e) {
+    }
   }
 
   String? _extractRoadName(String instruction) {
@@ -512,9 +493,7 @@ String? _getNextInstruction() {
     final instructionRaw = (nextStep['html_instructions'] ?? '').toString().replaceAll(RegExp(r'<[^>]*>'), '');
     final instructionLower = instructionRaw.toLowerCase();
 
-    // specialized handling for roundabouts and exits
     if (m.contains('roundabout') || instructionLower.contains('roundabout') || instructionLower.contains('rondo') || instructionLower.contains('rondo')) {
-      // try to extract exit number from english or polish instructions
       final exitMatch = RegExp(r'exit (\d+)', caseSensitive: false).firstMatch(instructionRaw) ??
                         RegExp(r'zjazd (\d+)', caseSensitive: false).firstMatch(instructionRaw) ??
                         RegExp(r'\b(\d+)(?:st|nd|rd|th) exit\b', caseSensitive: false).firstMatch(instructionRaw);
@@ -537,7 +516,6 @@ String? _getNextInstruction() {
     } else if (m.startsWith('uturn')) {
       return 'zawróć';
     } else if (instructionLower.contains('exit') || instructionLower.contains('zjazd') || instructionLower.contains('zjazdu')) {
-      // fallback: mention exit/zjazd found in textual instruction
       final ex = RegExp(r'(zjazd|exit).{0,20}?(\d+)', caseSensitive: false).firstMatch(instructionRaw);
       if (ex != null && ex.groupCount >= 2) {
         return 'zjedź ${ex.group(2)}. zjazdem';

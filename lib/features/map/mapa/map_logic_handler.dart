@@ -1,4 +1,3 @@
-// 🔄 FINALNA WERSJA map_logic_handler.dart z płynnym 60/120 FPS i bez obracania gdy stoisz
 import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
@@ -38,14 +37,12 @@ class MapLogicHandler {
   bool forceFollowUser = true;
   bool mapReady = false;
 
-  // When true, camera movement was triggered programmatically by the app.
-  // Used to distinguish user drags from programmatic camera updates.
   bool _programmaticCameraMove = false;
   DateTime? _lastProgrammaticMoveTime;
 
   double _currentSpeed = 0.0;
   double _lastSpeed = 0.0;
-  double _cameraBearing = 0.0; // aktualne wychylenie kamery
+  double _cameraBearing = 0.0;
 
   LatLng? get targetLocation => _targetLocation;
 
@@ -106,9 +103,8 @@ class MapLogicHandler {
     final lng = _lerp(_prevLocation!.longitude, _targetLocation!.longitude, t);
     final interpolated = LatLng(lat, lng);
 
-    // płynne obracanie
     if (_currentSpeed > 2.5) {
-      _cameraBearing = _lerpAngle(_cameraBearing, _bearing, 0.05); // wygładzenie
+      _cameraBearing = _lerpAngle(_cameraBearing, _bearing, 0.05);
     } else {
       _cameraBearing = _lerpAngle(_cameraBearing, 0, 0.05);
     }
@@ -199,8 +195,6 @@ class MapLogicHandler {
       zoomControlsEnabled: false,
       markers: _userMarker != null ? {_userMarker!} : {},
       onCameraMoveStarted: () {
-        // If the camera move was not triggered by our code AND
-        // it didn't happen immediately after a programmatic move, treat it as user gesture
         final now = DateTime.now();
         final lastProg = _lastProgrammaticMoveTime ?? DateTime.fromMillisecondsSinceEpoch(0);
         final elapsed = now.difference(lastProg).inMilliseconds;
@@ -211,22 +205,18 @@ class MapLogicHandler {
         }
       },
       onCameraIdle: () {
-        // When camera becomes idle, clear the programmatic flag so future user gestures are detected
         _programmaticCameraMove = false;
       },
       tiltGesturesEnabled: true,
       rotateGesturesEnabled: true,
     ),
-        // transparent listener overlay to detect user touch without blocking map gestures
         Positioned.fill(
           child: Listener(
             behavior: HitTestBehavior.translucent,
             onPointerDown: (_) {
-              // user touched the map -> stop following
               forceStopFollowingUser();
             },
             onPointerUp: (_) {
-              // pointer up - nothing special
             },
           ),
         ),
@@ -283,8 +273,6 @@ class MapLogicHandler {
     onUpdate();
   }
 
-
-  /// Force stop following the user (called when user starts panning with touch)
   void forceStopFollowingUser() {
     followUser = false;
     forceFollowUser = false;

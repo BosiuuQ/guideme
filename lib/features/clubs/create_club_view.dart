@@ -65,9 +65,28 @@ class _CreateClubViewState extends State<CreateClubView> {
     setState(() => isSubmitting = true);
 
     try {
-      uploadedLogoUrl = await uploadLogoToSupabase(selectedLogoFile!);
-      if (uploadedLogoUrl == null) throw Exception("Nie udało się przesłać logo.");
+      // 🔹 sprawdzanie poziomu użytkownika
+      final userLvl = await supabase
+          .from('users')
+          .select('account_lvl')
+          .eq('id', user.id)
+          .maybeSingle();
 
+      if (userLvl == null || (userLvl['account_lvl'] ?? 0) < 7) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Musisz mieć co najmniej 7 poziom, aby stworzyć klub!')),
+        );
+        setState(() => isSubmitting = false);
+        return;
+      }
+
+      // 🔹 upload logo
+      uploadedLogoUrl = await uploadLogoToSupabase(selectedLogoFile!);
+      if (uploadedLogoUrl == null) {
+        throw Exception("Nie udało się przesłać logo.");
+      }
+
+      // 🔹 utworzenie klubu
       final payload = {
         'name': nameController.text.trim(),
         'logo_url': uploadedLogoUrl,
@@ -78,8 +97,10 @@ class _CreateClubViewState extends State<CreateClubView> {
         'user_id': user.id,
       };
 
-      final insert = await supabase.from('clubs').insert(payload).select().single();
+      final insert =
+      await supabase.from('clubs').insert(payload).select().single();
 
+      // 🔹 dodanie użytkownika jako Lidera
       await supabase.from('clubs_members').insert({
         'user_id': user.id,
         'club_id': insert['id'],
@@ -90,7 +111,7 @@ class _CreateClubViewState extends State<CreateClubView> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('🎉 Klub został utworzony!')),
         );
-        context.pop(true); // ← zwraca TRUE do poprzedniego ekranu
+        context.pop(true); // zwraca TRUE do poprzedniego ekranu
       }
     } on PostgrestException catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -104,6 +125,7 @@ class _CreateClubViewState extends State<CreateClubView> {
       setState(() => isSubmitting = false);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {

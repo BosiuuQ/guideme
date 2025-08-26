@@ -90,7 +90,7 @@ class ClubController {
 
     final totalLevels = levelsResponse.fold<double>(
       0.0,
-      (sum, item) => sum + ((item['account_lvl'] ?? 0) as num).toDouble(),
+          (sum, item) => sum + ((item['account_lvl'] ?? 0) as num).toDouble(),
     );
     final avgLevel = levelsResponse.isEmpty
         ? 0
@@ -98,7 +98,7 @@ class ClubController {
 
     final totalKm = kmsResponse.fold<double>(
       0.0,
-      (sum, item) => sum + ((item['total_km'] ?? 0) as num).toDouble(),
+          (sum, item) => sum + ((item['total_km'] ?? 0) as num).toDouble(),
     );
     final avgKm = kmsResponse.isEmpty
         ? 0
@@ -113,7 +113,7 @@ class ClubController {
     };
   }
 
-  // Utwórz klub
+  // Utwórz klub (tylko od 7 lvl)
   Future<void> createClub({
     required String userId,
     required String name,
@@ -123,6 +123,23 @@ class ClubController {
     required String style,
     bool isOpen = true,
   }) async {
+    // Sprawdzenie poziomu użytkownika
+    final user = await supabase
+        .from('users')
+        .select('account_lvl')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (user == null) {
+      throw Exception("Użytkownik nie istnieje.");
+    }
+
+    final accountLvl = (user['account_lvl'] ?? 0) as int;
+    if (accountLvl < 7) {
+      throw Exception("Aby utworzyć klub musisz mieć co najmniej 7 poziom.");
+    }
+
+    // Tworzenie klubu
     final club = await supabase.from('clubs').insert({
       'name': name,
       'logo_url': logoUrl,
@@ -132,6 +149,7 @@ class ClubController {
       'is_open': isOpen,
     }).select().single();
 
+    // Dodanie twórcy jako Lidera
     await supabase.from('clubs_members').insert({
       'user_id': userId,
       'club_id': club['id'],

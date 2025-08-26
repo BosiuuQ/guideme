@@ -110,6 +110,30 @@ class InstagramBackend {
     final currentUser = supabase.auth.currentUser;
     if (currentUser == null) throw Exception("Użytkownik nie jest zalogowany.");
 
+    // pobierz najnowszy post użytkownika
+    final lastPost = await supabase
+        .from('instagram_posty')
+        .select('created_at')
+        .eq('user_id', currentUser.id)
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    if (lastPost != null) {
+      final lastCreated = DateTime.parse(lastPost['created_at']);
+      final now = DateTime.now();
+
+      final diff = now.difference(lastCreated);
+
+      if (diff.inMinutes < 60) {
+        final minutesLeft = 60 - diff.inMinutes;
+        final secondsLeft = 60 - diff.inSeconds % 60;
+
+        throw Exception(
+            "Możesz dodać nowy post za ${minutesLeft}m ${secondsLeft}s.");
+      }
+    }
+
     await supabase.from('instagram_posty').insert({
       'user_id': currentUser.id,
       'caption': caption,

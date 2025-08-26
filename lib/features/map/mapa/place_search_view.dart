@@ -55,6 +55,7 @@ class _PlaceSearchBodyState extends State<_PlaceSearchBody> {
   }
 
   Future<void> _fetchSuggestions(String input) async {
+    // --- ONLY LOGIC FOR SUGGESTIONS WAS CHANGED BELOW ---
     if (input.isEmpty) {
       setState(() => _suggestions = []);
       return;
@@ -71,19 +72,83 @@ class _PlaceSearchBodyState extends State<_PlaceSearchBody> {
       'https://maps.googleapis.com/maps/api/place/autocomplete/json?input=$input&key=${PlaceSearchSheet._apiKey}&language=pl&components=country:pl$locationBias',
     );
 
-    final response = await http.get(url);
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      final List predictions = data['predictions'];
-      if (predictions.isNotEmpty && widget.currentLocation != null) {
-        predictions.sort((a, b) {
-          return (a['description'].toString().contains(input)) ? -1 : 1;
-        });
+    try {
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final List predictions = (data['predictions'] as List?) ?? [];
+
+        // If we have predictions, apply a smarter client-side ranking:
+        // - prefer exact matches on main_text/description
+        // - prefer prefix matches (main_text startsWith query)
+        // - then contains matches
+        // - prefer shorter main_text (clean names like "Wroclavia")
+        // - small boosts for likely useful types (shopping_mall, establishment)
+        if (predictions.isNotEmpty) {
+          final q = input.toLowerCase().trim();
+
+          int scoreFor(dynamic p) {
+            try {
+              final Map fmt = (p['structured_formatting'] ?? {}) as Map;
+              final String main = (fmt['main_text'] ?? '').toString().toLowerCase();
+              final String secondary = (fmt['secondary_text'] ?? '').toString().toLowerCase();
+              final String desc = (p['description'] ?? '').toString().toLowerCase();
+              final List types = (p['types'] as List?) ?? const [];
+
+              int score = 0;
+
+              // Highest priority: exact match
+              if (main == q || desc == q) score += 1000000;
+
+              // Prefix matches (strong)
+              if (main.startsWith(q) && q.isNotEmpty) score += 500000;
+              if (desc.startsWith(q) && q.isNotEmpty) score += 300000;
+
+              // Secondary prefix
+              if (secondary.startsWith(q) && q.isNotEmpty) score += 150000;
+
+              // Contains
+              if (main.contains(q) && q.isNotEmpty) score += 200000;
+              if (desc.contains(q) && q.isNotEmpty) score += 150000;
+              if (secondary.contains(q) && q.isNotEmpty) score += 50000;
+
+              // Prefer shorter main_text (clean names like "Wroclavia")
+              final int nameLen = main.length;
+              if (nameLen > 0 && nameLen < 50) {
+                final int nameBoost = (50 - nameLen);
+                score += nameBoost * 100;
+              }
+
+              // Type boosts (small)
+              if (types.contains('shopping_mall')) score += 8000;
+              if (types.contains('establishment')) score += 2000;
+              if (types.contains('point_of_interest')) score += 1000;
+
+              return score;
+            } catch (_) {
+              return 0;
+            }
+          }
+
+          predictions.sort((a, b) {
+            final sa = scoreFor(a as Map);
+            final sb = scoreFor(b as Map);
+            return sb.compareTo(sa); // descending
+          });
+        }
+
+        setState(() => _suggestions = predictions);
+      } else {
+        // non-200: clear suggestions to avoid stale results
+        setState(() => _suggestions = []);
       }
-      setState(() => _suggestions = predictions);
+    } catch (e) {
+      // network / parse error: keep UI stable
+      setState(() => _suggestions = []);
     }
 
     setState(() => _isLoading = false);
+    // --- END CHANGED BLOCK ---
   }
 
   Future<void> _handlePlaceSelected(String placeId, String description) async {
@@ -162,13 +227,13 @@ class _PlaceSearchBodyState extends State<_PlaceSearchBody> {
                     child: Text("🕓 Ostatnie wyszukiwania", style: TextStyle(color: Colors.grey[300], fontSize: 14)),
                   ),
                   ..._recentSearches.map((e) => ListTile(
-                        leading: const Icon(Icons.history, color: Colors.white),
-                        title: Text("📍 $e", style: const TextStyle(color: Colors.white)),
-                        onTap: () {
-                          _controller.text = e;
-                          _fetchSuggestions(e);
-                        },
-                      )),
+                    leading: const Icon(Icons.history, color: Colors.white),
+                    title: Text("📍 $e", style: const TextStyle(color: Colors.white)),
+                    onTap: () {
+                      _controller.text = e;
+                      _fetchSuggestions(e);
+                    },
+                  )),
                 ],
               ),
             )

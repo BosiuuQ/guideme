@@ -8,12 +8,11 @@ environment:
   sdk: ^3.6.0
 
 dependencies:
+  mapbox_gl: ^0.14.0
   flutter:
     sdk: flutter
 
   flutter_tts: ^3.8.0
-  google_maps_flutter: ^2.6.0
-  flutter_launcher_icons: ^0.13.1
   flutter_rating_bar: ^4.0.1
   flutter_typeahead: ^5.2.0
   flutter_secure_storage: ^9.0.0
@@ -60,7 +59,6 @@ dependencies:
   flutter_polyline_points: ^2.1.0
   syncfusion_flutter_pdfviewer: ^29.2.9 #odczytujepdf-regulamin
   flutter_map: ^8.1.1
-  vector_map_tiles: ^9.0.0-beta.8
   vector_tile_renderer: ^6.0.0
 dev_dependencies:
   flutter:
@@ -84,9 +82,3 @@ flutter:
     - assets/animations/
     - assets/icons/ikonka.png
     - assets/docs/regulamin.pdf
-
-flutter_launcher_icons:
-  android: true
-  ios: true
-  remove_alpha_ios: true
-  image_path: "assets/icons/icon.png"

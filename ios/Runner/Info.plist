@@ -65,5 +65,7 @@
 	<string>Aplikacja wymaga dostępu do galerii, aby umożliwić wybór zdjęć.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Aplikacja wymaga dostępu do aparatu, aby umożliwić robienie zdjęć.</string>
+  <key>MGLMapboxAccessToken</key>
+  <string>YOUR_MAPBOX_ACCESS_TOKEN</string>
 </dict>
 </plist>

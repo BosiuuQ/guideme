@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:mapbox_gl/mapbox_gl.dart';
+import 'package:guide_me/mapbox_shim.dart' as mb;
+import 'package:guide_me/mapbox_shim.dart';
 
 class RoutePlannerView extends StatelessWidget {
   final LatLng origin;

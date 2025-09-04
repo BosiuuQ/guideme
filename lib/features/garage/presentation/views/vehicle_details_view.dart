@@ -8,6 +8,7 @@ import 'package:guide_me/features/garage/presentation/views/vehicle_log_view.dar
 import 'package:guide_me/features/garage/presentation/views/vehicle_edit_view.dart';
 import 'package:guide_me/features/garage/presentation/widgets/vehicle_details_images_slider_widget.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/scheduler.dart';
 
 class VehicleDetailsView extends StatefulWidget {
   const VehicleDetailsView({super.key, required this.vehicle});

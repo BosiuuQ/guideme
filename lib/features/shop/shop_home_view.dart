@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:guide_me/features/shop/shop_backend.dart';
 import 'package:guide_me/features/shop/premium_tab_view.dart';
 import 'package:guide_me/core/config/routing/app_routes.dart';
+import 'package:flutter/scheduler.dart';
 
 class ShopHomeView extends StatefulWidget {
   const ShopHomeView({super.key});

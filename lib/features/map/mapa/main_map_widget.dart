@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:mapbox_gl/mapbox_gl.dart' as mb;
+import 'package:guide_me/mapbox_shim.dart' as mb;
+import 'package:guide_me/mapbox_shim.dart';
 import 'map_logic_handler.dart';
-import 'package:guide_me/mapbox_compat.dart';
+import 'package:guide_me/mapbox_shim.dart';
 import 'package:flutter/scheduler.dart';
 
 class MainMapWidget extends StatefulWidget {

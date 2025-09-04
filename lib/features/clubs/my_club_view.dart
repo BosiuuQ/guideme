@@ -6,6 +6,7 @@ import 'package:guide_me/features/clubs/club_events_widget.dart';
 import 'package:guide_me/features/clubs/club_controller.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:ui';
+import 'package:flutter/scheduler.dart';
 
 class MyClubView extends StatefulWidget {
   const MyClubView({super.key});

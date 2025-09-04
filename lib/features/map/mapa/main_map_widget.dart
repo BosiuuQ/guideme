@@ -43,7 +43,7 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
 
   Widget _buildMap() {
     return mb.MapboxMap(
-      accessToken: null, // token from AndroidManifest/Info.plist
+      accessToken: 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg', // token from AndroidManifest/Info.plist
       initialCameraPosition: const mb.CameraPosition(target: mb.LatLng(52.2297, 21.0122), zoom: 13.0),
       onMapCreated: _mapLogic.onMapCreated,
       myLocationEnabled: false,

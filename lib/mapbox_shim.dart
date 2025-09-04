@@ -1,6 +1,10 @@
 // mapbox_shim.dart - expanded shim to satisfy mapbox_gl API usage in project
 import 'package:flutter/material.dart';
 import 'dart:typed_data';
+import 'package:flutter_map/flutter_map.dart' as fm;
+import 'package:latlong2/latlong.dart' as ll;
+
+
 
 // Basic LatLng compatible with mapbox_gl usage
 class LatLng {
@@ -95,22 +99,22 @@ typedef MapTapCallback = void Function(LatLng position);
 typedef StyleLoadedCallback = void Function();
 
 // MapboxMap widget - accepts many named parameters used elsewhere in project.
+
+
+
+
 class MapboxMap extends StatefulWidget {
   final CameraPosition initialCameraPosition;
   final String? accessToken;
-  final MapCreatedCallback? onMapCreated;
-  final MapTapCallback? onTap;
+  final void Function(MapboxMapController)? onMapCreated;
+  final void Function(LatLng)? onTap;
   final bool myLocationEnabled;
   final bool trackCameraPosition;
-  final StyleLoadedCallback? onStyleLoadedCallback;
-  // accept common map options (kept for compatibility)
+  final VoidCallback? onStyleLoadedCallback;
   final bool zoomGesturesEnabled;
   final bool scrollGesturesEnabled;
   final bool rotateGesturesEnabled;
   final bool tiltGesturesEnabled;
-  final double? minMaxZoomPreferenceMin;
-  final double? minMaxZoomPreferenceMax;
-
   const MapboxMap({
     Key? key,
     required this.initialCameraPosition,
@@ -124,8 +128,6 @@ class MapboxMap extends StatefulWidget {
     this.scrollGesturesEnabled = true,
     this.rotateGesturesEnabled = true,
     this.tiltGesturesEnabled = true,
-    this.minMaxZoomPreferenceMin,
-    this.minMaxZoomPreferenceMax,
   }) : super(key: key);
 
   @override
@@ -134,12 +136,14 @@ class MapboxMap extends StatefulWidget {
 
 class _MapboxMapState extends State<MapboxMap> {
   late MapboxMapController _controller;
+  late fm.MapController _fmController;
 
   @override
   void initState() {
     super.initState();
+    _controller = MapboxMapController(widget.initialCameraPosition.target);
+    _fmController = fm.MapController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _controller = MapboxMapController(widget.initialCameraPosition.target);
       widget.onMapCreated?.call(_controller);
       widget.onStyleLoadedCallback?.call();
     });
@@ -149,21 +153,72 @@ class _MapboxMapState extends State<MapboxMap> {
   Widget build(BuildContext context) {
     final LatLng c = widget.initialCameraPosition.target;
     final double z = widget.initialCameraPosition.zoom;
-    final size = MediaQuery.of(context).size;
-    final int width = (size.width * MediaQuery.of(context).devicePixelRatio).clamp(200, 1280).toInt();
-    final int height = (size.height * 0.4 * MediaQuery.of(context).devicePixelRatio).clamp(200, 1280).toInt();
-    final token = widget.accessToken ?? '';
-    final url = 'https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/' + '\${c.longitude},\${c.latitude},\${z}/' + '\${width}x\${height}?access_token=\${token}';
+    final token = (widget.accessToken ?? '').trim();
 
-    return GestureDetector(
-      onTapUp: (details) {
-        if (widget.onTap != null) widget.onTap!(widget.initialCameraPosition.target);
-      },
-      child: Container(
-        color: Colors.grey[200],
-        height: size.height * 0.4,
-        width: double.infinity,
-        child: Image.network(url, fit: BoxFit.cover, errorBuilder: (c, e, s) => Center(child: Text('Mapa nie mogła się załadować'))),
+    final String urlTemplate;
+    if (token.isEmpty) {
+      urlTemplate = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    } else {
+      urlTemplate = 'https://api.mapbox.com/styles/v1/mapbox/streets-v11/tiles/256/{z}/{x}/{y}@2x?access_token=${token}';
+    }
+
+    // Build marker list from controller symbols (use geometry if present)
+    final List<fm.Marker> markers = _controller._symbols.values.where((s) => s.geometry != null).map((s) {
+      final lat = s.geometry!.latitude;
+      final lon = s.geometry!.longitude;
+      return fm.Marker(
+        point: ll.LatLng(lat, lon),
+        width: 40,
+        height: 40,
+        // Use a simple Icon for markers; if you have custom icon bytes in s.data, you can extend this.
+        child: GestureDetector(
+          onTap: () {
+            // If symbol has callback stored in data, try to call it (best-effort)
+            try {
+              final cb = s.data['onTap'];
+              if (cb is Function) cb();
+            } catch (e) {}
+          },
+          child: Container(
+            alignment: Alignment.center,
+            child: const Icon(Icons.location_on, size: 32),
+          ),
+        ),
+      );
+    }).toList();
+
+    return SizedBox(
+      height: MediaQuery.of(context).size.height * 0.4,
+      width: double.infinity,
+      child: fm.FlutterMap(
+        mapController: _fmController,
+        options: fm.MapOptions(
+          initialCenter: ll.LatLng(c.latitude, c.longitude),
+          initialZoom: z,
+          // interaction options left default
+          onTap: (tapPosition, point) {
+            if (widget.onTap != null) widget.onTap!(LatLng(point.latitude, point.longitude));
+          },
+          onPositionChanged: (pos, hasGesture) {
+            if (widget.trackCameraPosition) {
+              final center = pos.center;
+              if (center != null) {
+                _controller.center = LatLng(center.latitude, center.longitude);
+              }
+            }
+          },
+        ),
+        children: [
+          fm.TileLayer(
+            urlTemplate: urlTemplate,
+            subdomains: const ['a', 'b', 'c'],
+            tileProvider: fm.NetworkTileProvider(),
+            userAgentPackageName: 'com.example.guide_me',
+          ),
+          fm.MarkerLayer(
+            markers: markers,
+          ),
+        ],
       ),
     );
   }

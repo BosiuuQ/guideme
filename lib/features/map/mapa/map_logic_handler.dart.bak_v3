@@ -18,13 +18,7 @@ class MapLogicHandler {
   /// optional latest known target location
   Position? targetLocation;
 
-  MapLogicHandler({this.onUpdate, this.tickerProvider});
-
-  /// Backwards-compatibility factory accepting positional args.
-  factory MapLogicHandler.fromPositional([VoidCallback? onUpdate, TickerProvider? tickerProvider]) {
-    return MapLogicHandler(onUpdate: onUpdate, tickerProvider: tickerProvider);
-  }
-
+  MapLogicHandler([this.onUpdate, this.tickerProvider]);
 
   /// Called from the map widget when the map controller is ready.
   Future<void> onMapCreated(mb.MapboxMapController ctrl) async {

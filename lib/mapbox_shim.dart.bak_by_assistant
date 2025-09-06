@@ -181,18 +181,7 @@ class _MapboxMapState extends State<MapboxMap> {
           },
           child: Container(
             alignment: Alignment.center,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16.0),
-              child: Builder(builder: (ctx) {
-                try {
-                  final asset = s.data['asset'];
-                  if (asset is String && asset.isNotEmpty) {
-                    return Image.asset(asset, width: 36, height: 36, fit: BoxFit.contain);
-                  }
-                } catch (e) {}
-                return const Icon(Icons.location_on);
-              }),
-            ),
+            child: ClipRRect(borderRadius: BorderRadius.circular(16.0), child: const Icon(Icons.location_on)),
           ),
         ),
       );

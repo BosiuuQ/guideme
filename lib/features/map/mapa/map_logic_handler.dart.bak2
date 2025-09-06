@@ -8,8 +8,8 @@ import 'package:geolocator/geolocator.dart';
 /// It will add/update a single user-location symbol (using an asset icon when present)
 /// and animate the camera smoothly to follow the user.
 class MapLogicHandler {
-  VoidCallback? onUpdate;
-  TickerProvider? tickerProvider;
+  final VoidCallback onUpdate;
+  final TickerProvider tickerProvider;
 
   mb.MapboxMapController? controller;
   mb.Symbol? _userSymbol;
@@ -18,13 +18,7 @@ class MapLogicHandler {
   /// optional latest known target location
   Position? targetLocation;
 
-  MapLogicHandler({this.onUpdate, this.tickerProvider});
-
-  /// Backwards-compatibility factory accepting positional args.
-  factory MapLogicHandler.fromPositional([VoidCallback? onUpdate, TickerProvider? tickerProvider]) {
-    return MapLogicHandler(onUpdate: onUpdate, tickerProvider: tickerProvider);
-  }
-
+  MapLogicHandler(this.onUpdate, this.tickerProvider);
 
   /// Called from the map widget when the map controller is ready.
   Future<void> onMapCreated(mb.MapboxMapController ctrl) async {
@@ -105,7 +99,7 @@ class MapLogicHandler {
 
       // notify UI that map items changed
       try {
-        onUpdate?.call();
+        onUpdate();
       } catch (e) {}
     } catch (e) {
       // ignore runtime errors (e.g. controller not ready)
@@ -117,11 +111,4 @@ class MapLogicHandler {
     if (controller == null || targetLocation == null) return;
     await controller!.animateCamera(mb.CameraPosition(target: mb.LatLng(targetLocation!.latitude, targetLocation!.longitude), zoom: zoom));
   }
-
-  /// Backwards-compatible stub for legacy callers that expect a speedometer widget.
-  /// Returns an empty sized box — override later if you need a real widget.
-  Widget buildSpeedometer() {
-    return const SizedBox.shrink();
-  }
-
 }

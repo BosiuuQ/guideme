@@ -159,7 +159,7 @@ class _MapboxMapState extends State<MapboxMap> {
     if (token.isEmpty) {
       urlTemplate = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
     } else {
-      urlTemplate = 'https://api.mapbox.com/styles/v1/mapbox/dark-v10/tiles/256/{z}/{x}/{y}@2x?access_token=${token}';
+      urlTemplate = 'https://api.mapbox.com/styles/v1/mapbox/streets-v11/tiles/256/{z}/{x}/{y}@2x?access_token=${token}';
     }
 
     // Build marker list from controller symbols (use geometry if present)
@@ -181,7 +181,7 @@ class _MapboxMapState extends State<MapboxMap> {
           },
           child: Container(
             alignment: Alignment.center,
-            child: ClipRRect(borderRadius: BorderRadius.circular(16.0), child: const Icon(Icons.location_on)),
+            child: const Icon(Icons.location_on, size: 32),
           ),
         ),
       );

@@ -152,12 +152,6 @@ class MapboxMapController {
     return;
   }
 
-  /// Synchronous immediate update for interpolation loops (avoids async/await overhead)
-  void updateSymbolImmediate(Symbol symbol, LatLng geometry) {
-    symbol.geometry = geometry;
-    _notify?.call();
-  }
-
   // placeholder for removeSymbol
   Future<void> removeSymbol(Symbol symbol) async {
     _symbols.remove(symbol.id);

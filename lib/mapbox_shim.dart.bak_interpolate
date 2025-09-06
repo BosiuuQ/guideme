@@ -68,16 +68,6 @@ class MapboxMapController {
     _notify = notify;
   }
 
-  /// Immediately move camera to target (no interpolation) and notify.
-  void moveCameraImmediate(LatLng target, double zoom) {
-    center = target;
-    _lastZoom = zoom;
-    try {
-      _fmController?.move(ll.LatLng(target.latitude, target.longitude), zoom);
-    } catch (e) {}
-    _notify?.call();
-  }
-
 
   Future<void> animateCamera(dynamic update) async {
     // Determine target center and optional zoom
@@ -150,12 +140,6 @@ class MapboxMapController {
     if (options.data != null) symbol.data.addAll(options.data!);
     _notify?.call();
     return;
-  }
-
-  /// Synchronous immediate update for interpolation loops (avoids async/await overhead)
-  void updateSymbolImmediate(Symbol symbol, LatLng geometry) {
-    symbol.geometry = geometry;
-    _notify?.call();
   }
 
   // placeholder for removeSymbol

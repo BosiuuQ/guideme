@@ -32,15 +32,6 @@ class MapLogicHandler {
   double _bearing = 0.0;
 
   double _currentSpeed = 0.0; // m/s
-
-  /// Current speed in m/s (public getter)
-  double get currentSpeed => _currentSpeed;
-
-  /// Current speed in km/h
-  double get currentSpeedKmh => _currentSpeed * 3.6;
-  
-  /// Current bearing in degrees (0 = north)
-  double get currentBearing => _bearing;
   double _lastSpeed = 0.0;
   double _cameraBearing = 0.0;
 
@@ -196,7 +187,7 @@ class MapLogicHandler {
           } else if (_userSymbol != null && controller != null) {
             controller!.updateSymbolImmediate(_userSymbol!, _displayPos!);
           }
-          if (controller != null) controller!.moveCameraImmediate(_displayPos!, 19);
+          if (controller != null) controller!.moveCameraImmediate(_displayPos!, 17.5);
         } catch (e) {}
       }
 
@@ -204,9 +195,6 @@ class MapLogicHandler {
     } catch (e) {
       debugPrint('[MapLogic] _onNewGps error: $e');
     }
-      // notify UI listeners
-      try { onUpdate?.call(); } catch(e) {}
-
   }
 
 
@@ -249,7 +237,7 @@ double _distanceMeters(double lat1, double lon1, double lat2, double lon2) {
   }
 
   /// If some other part of the app wants to move camera to a previously set target
-  Future<void> moveToTarget({double zoom = 19}) async {
+  Future<void> moveToTarget({double zoom = 16}) async {
     if (controller == null || _lastGpsPosition == null) return;
     await controller!.animateCamera(mb.CameraPosition(target: LatLng(_lastGpsPosition!.latitude, _lastGpsPosition!.longitude), zoom: zoom));
   }
@@ -300,7 +288,7 @@ double _distanceMeters(double lat1, double lon1, double lat2, double lon2) {
       try {
         if (_userSymbol != null && controller != null && _displayPos != null) {
           controller!.updateSymbolImmediate(_userSymbol!, _displayPos!);
-          controller!.moveCameraImmediate(_displayPos!, 19);
+          controller!.moveCameraImmediate(_displayPos!, 17.5);
         }
       } catch (e) {}
 
@@ -330,14 +318,11 @@ double _distanceMeters(double lat1, double lon1, double lat2, double lon2) {
       try {
         if (_userSymbol != null && controller != null && _displayPos != null) {
           controller!.updateSymbolImmediate(_userSymbol!, _displayPos!);
-          controller!.moveCameraImmediate(_displayPos!, 19);
+          controller!.moveCameraImmediate(_displayPos!, 17.5);
         }
       } catch (e) {}
       debugPrint('[MapLogic] _onTick deadReckon moveMeters=${moveMeters.toStringAsFixed(2)} dt=${dt.toStringAsFixed(3)} from=$prev to=${_displayPos} bearing=${_bearing.toStringAsFixed(1)}');
     }
-        // notify UI listeners after tick updates
-        try { onUpdate?.call(); } catch(e) {}
-
   }
 
 

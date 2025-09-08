@@ -55,21 +55,84 @@ class SymbolOptions {
 // Minimal Controller that supports addSymbol/updateSymbol and camera operations
 class MapboxMapController {
   LatLng center;
+  fm.MapController? _fmController;
+  VoidCallback? _notify;
+  double _lastZoom = 13.0;
   int _symbolIdCounter = 0;
   final Map<String, Symbol> _symbols = {};
   MapboxMapController(this.center);
 
+  /// Attach flutter_map's MapController and a notify callback from the widget state
+  void attachFlutterMapController(fm.MapController controller, VoidCallback notify) {
+    _fmController = controller;
+    _notify = notify;
+  }
+
+  /// Immediately move camera to target (no interpolation) and notify.
+  void moveCameraImmediate(LatLng target, double zoom) {
+    center = target;
+    _lastZoom = zoom;
+    try {
+      _fmController?.move(ll.LatLng(target.latitude, target.longitude), zoom);
+    } catch (e) {}
+    _notify?.call();
+  }
+
+
   Future<void> animateCamera(dynamic update) async {
+    // Determine target center and optional zoom
+    LatLng? target;
+    double? zoom;
     if (update is CameraPosition) {
-      center = update.target;
+      target = update.target;
+      zoom = update.zoom;
     } else if (update is CameraUpdate) {
       if (update.position != null) {
-        center = update.position!.target;
+        target = update.position!.target;
+        zoom = update.position!.zoom;
       } else if (update.latLng != null) {
-        center = update.latLng!;
+        target = update.latLng;
       }
     }
-    return;
+    if (target == null) return;
+
+    // If flutter_map controller attached, perform a smooth interpolation using small steps.
+    if (_fmController != null) {
+      try {
+        // current center in controller
+        final fromLat = center.latitude;
+        final fromLon = center.longitude;
+        final toLat = target.latitude;
+        final toLon = target.longitude;
+
+        // animation duration and steps
+        const int ms = 400;
+        const int steps = 20;
+        final stepMs = ms ~/ steps;
+        for (int i = 1; i <= steps; i++) {
+          final t = i / steps;
+          final curLat = fromLat + (toLat - fromLat) * t;
+          final curLon = fromLon + (toLon - fromLon) * t;
+          center = LatLng(curLat, curLon);
+          try {
+            _fmController!.move(ll.LatLng(curLat, curLon), zoom ?? _lastZoom);
+          } catch (e) {
+            // fallback: still update center
+          }
+          // notify widget to rebuild markers if needed
+          _notify?.call();
+          await Future.delayed(Duration(milliseconds: stepMs));
+        }
+      } catch (e) {
+        // on any error, fallback to immediate set
+        center = target;
+        try { _fmController!.move(ll.LatLng(target.latitude, target.longitude), zoom ?? _lastZoom); } catch (e) {}
+        _notify?.call();
+      }
+    } else {
+      // no flutter_map controller attached: just set center
+      center = target;
+    }
   }
 
   Future<Symbol> addSymbol(SymbolOptions options) async {
@@ -78,13 +141,21 @@ class MapboxMapController {
     final sym = Symbol(id, geometry: options.geometry);
     if (options.data != null) sym.data.addAll(options.data!);
     _symbols[id] = sym;
+    _notify?.call();
     return sym;
   }
 
   Future<void> updateSymbol(Symbol symbol, SymbolOptions options) async {
     symbol.geometry = options.geometry;
     if (options.data != null) symbol.data.addAll(options.data!);
+    _notify?.call();
     return;
+  }
+
+  /// Synchronous immediate update for interpolation loops (avoids async/await overhead)
+  void updateSymbolImmediate(Symbol symbol, LatLng geometry) {
+    symbol.geometry = geometry;
+    _notify?.call();
   }
 
   // placeholder for removeSymbol
@@ -143,6 +214,8 @@ class _MapboxMapState extends State<MapboxMap> {
     super.initState();
     _controller = MapboxMapController(widget.initialCameraPosition.target);
     _fmController = fm.MapController();
+    // attach flutter_map controller and a small notify to rebuild when symbols/center update
+    _controller._lastZoom = widget.initialCameraPosition.zoom; _controller.attachFlutterMapController(_fmController, () { setState(() {}); });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.onMapCreated?.call(_controller);
       widget.onStyleLoadedCallback?.call();
@@ -159,7 +232,7 @@ class _MapboxMapState extends State<MapboxMap> {
     if (token.isEmpty) {
       urlTemplate = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
     } else {
-      urlTemplate = 'https://api.mapbox.com/styles/v1/mapbox/streets-v11/tiles/256/{z}/{x}/{y}@2x?access_token=${token}';
+      urlTemplate = 'https://api.mapbox.com/styles/v1/mapbox/dark-v10/tiles/256/{z}/{x}/{y}@2x?access_token=${token}';
     }
 
     // Build marker list from controller symbols (use geometry if present)
@@ -181,14 +254,25 @@ class _MapboxMapState extends State<MapboxMap> {
           },
           child: Container(
             alignment: Alignment.center,
-            child: const Icon(Icons.location_on, size: 32),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16.0),
+              child: Builder(builder: (ctx) {
+                try {
+                  final asset = s.data['asset'];
+                  if (asset is String && asset.isNotEmpty) {
+                    return Image.asset(asset, width: 36, height: 36, fit: BoxFit.contain);
+                  }
+                } catch (e) {}
+                return const Icon(Icons.location_on);
+              }),
+            ),
           ),
         ),
       );
     }).toList();
 
     return SizedBox(
-      height: MediaQuery.of(context).size.height * 0.4,
+      height: MediaQuery.of(context).size.height,
       width: double.infinity,
       child: fm.FlutterMap(
         mapController: _fmController,

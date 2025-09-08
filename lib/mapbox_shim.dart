@@ -21,7 +21,7 @@ class CameraPosition {
   final double zoom;
   final double bearing;
   final double tilt;
-  const CameraPosition({required this.target, this.zoom = 12.0, this.bearing = 0.0, this.tilt = 0.0});
+  const CameraPosition({required this.target, this.zoom = 19, this.bearing = 0.0, this.tilt = 0.0});
 }
 
 // CameraUpdate placeholder (compat) - holds either a CameraPosition or a LatLng
@@ -57,7 +57,8 @@ class MapboxMapController {
   LatLng center;
   fm.MapController? _fmController;
   VoidCallback? _notify;
-  double _lastZoom = 13.0;
+  double _lastZoom = 23.0;
+  double bearing = 0.0;
   int _symbolIdCounter = 0;
   final Map<String, Symbol> _symbols = {};
   MapboxMapController(this.center);
@@ -232,7 +233,7 @@ class _MapboxMapState extends State<MapboxMap> {
     if (token.isEmpty) {
       urlTemplate = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
     } else {
-      urlTemplate = 'https://api.mapbox.com/styles/v1/mapbox/dark-v10/tiles/256/{z}/{x}/{y}@2x?access_token=${token}';
+      urlTemplate = 'https://api.mapbox.com/styles/v1/bosiuuq/cly3nq2tw007t01pm4256097c/tiles/{z}/{x}/{y}@2x?access_token=${token}';
     }
 
     // Build marker list from controller symbols (use geometry if present)
@@ -289,6 +290,11 @@ class _MapboxMapState extends State<MapboxMap> {
               if (center != null) {
                 _controller.center = LatLng(center.latitude, center.longitude);
               }
+              // try to read rotation/angle from pos (flutter_map may provide rotation or angle)
+              try {
+                final rot = (pos as dynamic).rotation ?? (pos as dynamic).angle ?? 0.0;
+                _controller.bearing = (rot is num) ? rot.toDouble() : 0.0;
+              } catch (e) {}
             }
           },
         ),

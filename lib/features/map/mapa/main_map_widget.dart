@@ -1,9 +1,9 @@
+
 import 'package:flutter/material.dart';
 import 'package:guide_me/mapbox_shim.dart' as mb;
-import 'package:guide_me/mapbox_shim.dart';
 import 'map_logic_handler.dart';
-import 'package:guide_me/mapbox_shim.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 
 class MainMapWidget extends StatefulWidget {
   const MainMapWidget({super.key});
@@ -14,11 +14,28 @@ class MainMapWidget extends StatefulWidget {
 
 class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProviderStateMixin {
   late MapLogicHandler _mapLogic;
+  double _speedKmh = 0.0;
+  double _bearing = 0.0;
 
   @override
   void initState() {
     super.initState();
-    _mapLogic = MapLogicHandler(onUpdate: () { setState(() {}); }, tickerProvider: this);
+    _mapLogic = MapLogicHandler();
+    _mapLogic.tickerProvider = this;
+    _mapLogic.onUpdate = () {
+      // update speed and bearing display when map logic reports updates
+      try {
+        final v = _mapLogic.currentSpeedKmh;
+        final b = _mapLogic.currentBearing;
+        if (mounted) {
+          setState(() {
+            _speedKmh = double.parse(v.toStringAsFixed(1));
+            _bearing = b;
+          });
+        }
+      } catch (e) {}
+    };
+
   }
 
   @override
@@ -27,25 +44,170 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
     super.dispose();
   }
 
+
+  Widget buildTagDark(IconData icon, String label, VoidCallback onTap) => GestureDetector(
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black87,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 5)],
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: Colors.white),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        _buildMap(),
+        // Map (takes full area)
+        Positioned.fill(child: _buildMap()),
+
+        // Center cursor (keep existing asset but scale ~1.2x)
+        Center(
+          child: IgnorePointer(
+            child: SizedBox(
+              width: 48.0 * 1.2,
+              height: 48.0 * 1.2,
+              child: Image.asset('assets/icons/marker.png', fit: BoxFit.contain),
+            ),
+          ),
+        ),
+
+        // Top search bar - visible but not functional yet
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(10.0),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2))
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 12),
+                      const Icon(Icons.search, color: Colors.white),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text('Wyszukaj miejsce',
+                            style: TextStyle(color: Colors.white, fontSize: 16)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height:8),
+                // Row of tag buttons (Spoty, Kluby, Punkty widokowe) - dark style
+                SizedBox(
+                  height: 40,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    child: Row(
+                      children: [
+                        buildTagDark(Icons.camera_alt_rounded, 'Spoty', () {}),
+                        buildTagDark(Icons.groups_rounded, 'Kluby', () {}),
+                        buildTagDark(Icons.landscape_rounded, 'Punkty widokowe', () {}),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Speedometer bottom-left
+        
+        // Speedometer (circular, dark theme) - moved to bottom-right
         Positioned(
-          bottom: 20,
-          left: 20,
-          child: _mapLogic.buildSpeedometer(),
+          left: 16.0,
+          bottom: 16.0,
+          child: Material(
+            elevation: 6,
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(999),
+            child: Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                shape: BoxShape.circle,
+                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0,3))],
+                border: Border.all(color: Colors.white10, width: 1),
+              ),
+              padding: const EdgeInsets.all(8.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('${_speedKmh.toStringAsFixed(0)}', style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)),
+                  SizedBox(height: 2),
+                  Text('km/h', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // Compass (circular, dark theme) - shows north direction using rotation
+        Positioned(
+          right: 16.0,
+          bottom: 16.0,
+          child: Material(
+            elevation: 6,
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(999),
+            child: Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                shape: BoxShape.circle,
+                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0,3))],
+                border: Border.all(color: Colors.white10, width: 1),
+              ),
+              child: Center(
+                child: Transform.rotate(
+                  angle: (((_mapLogic.controller?.bearing ?? _bearing)) * (3.1415926535897932 / 180.0)) * -1,
+                  child: Icon(Icons.arrow_upward, color: Colors.white, size: 28),
+                ),
+              ),
+            ),
+          ),
         ),
       ],
     );
+
   }
 
   Widget _buildMap() {
     return mb.MapboxMap(
-      accessToken: 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg', // token from AndroidManifest/Info.plist
-      initialCameraPosition: const mb.CameraPosition(target: mb.LatLng(52.2297, 21.0122), zoom: 13.0),
-      onMapCreated: _mapLogic.onMapCreated,
+      accessToken: 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg',
+      initialCameraPosition: const mb.CameraPosition(target: mb.LatLng(52.2297, 21.0122), zoom: 19),
+      onMapCreated: (controller) {
+        _mapLogic.onMapCreated(controller);
+      },
       myLocationEnabled: false,
       trackCameraPosition: true,
       onStyleLoadedCallback: () {},

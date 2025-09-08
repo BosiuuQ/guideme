@@ -1,0 +1,213 @@
+import 'dart:async';
+import 'dart:math' as math;
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:guide_me/mapbox_shim.dart' as mb;
+import 'package:guide_me/mapbox_shim.dart';
+import 'package:geolocator/geolocator.dart';
+
+/// MapLogicHandler - uses a Ticker (60fps) to smoothly animate the user marker and camera.
+/// It estimates velocity from incoming GPS samples and advances the displayed position
+/// each tick. New GPS samples adjust the estimated velocity (low-pass) and gently pull
+/// the displayed position towards the GPS to avoid drift.
+class MapLogicHandler {
+  VoidCallback? onUpdate;
+  TickerProvider? tickerProvider;
+
+  mb.MapboxMapController? controller;
+  mb.Symbol? _userSymbol;
+
+  // GPS tracking state
+  Position? _lastGpsPosition;
+  DateTime? _lastGpsTime;
+
+  // Displayed (animated) position in lat/lon degrees
+  LatLng? _displayPos;
+  // Previous and last GPS samples for interpolation (no prediction)
+  Position? _prevGpsPosition;
+  DateTime? _prevGpsTime;
+  // Polling timer for frequent location reads
+  Timer? _pollTimer;
+
+
+  // Velocity in meters per second: east (lon), north (lat)
+  double _velEast = 0.0;
+  double _velNorth = 0.0;
+
+  // Ticker for smooth updates (~60fps)
+  Ticker? _ticker;
+  Duration _lastTick = Duration.zero;
+
+  StreamSubscription<Position>? _posSub;
+
+  MapLogicHandler({this.onUpdate, this.tickerProvider});
+
+  Future<void> onMapCreated(mb.MapboxMapController ctrl) async {
+    controller = ctrl;
+    // start ticker for smooth animation if tickerProvider provided
+    try {
+      if (tickerProvider != null) {
+        _ticker = tickerProvider!.createTicker(_onTick);
+        _lastTick = Duration.zero;
+        _ticker!.start();
+      }
+    } catch (e) {}
+    _initLocationListening();
+  }
+
+  Future<void> dispose() async {
+    await _posSub?.cancel();
+    _ticker?.stop();
+    _ticker?.dispose();
+    _ticker = null;
+  
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  Future<void> _initLocationListening() async 
+{
+    try {
+      // Start periodic polling of the current position to get frequent updates.
+      // Polling interval is 300ms (≈3.3Hz) — adjust if you need more/less frequency.
+      const int pollMs = 300;
+      _pollTimer?.cancel();
+      _pollTimer = Timer.periodic(Duration(milliseconds: pollMs), (_) async {
+        try {
+          final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
+          _onNewGps(pos);
+        } catch (e) {
+          // ignore individual poll failures
+        }
+      });
+    } catch (e) {}
+  }
+
+  // Called on each incoming GPS sample
+  void _onNewGps(Position pos) 
+{
+    final DateTime sampleTime = pos.timestamp ?? DateTime.now();
+    // ignore samples that go backwards in time
+    if (_lastGpsTime != null && !sampleTime.isAfter(_lastGpsTime!)) {
+      return;
+    }
+
+    // If no last sample, initialize both prev and last
+    if (_lastGpsPosition == null) {
+      _prevGpsPosition = pos;
+      _prevGpsTime = sampleTime;
+      _lastGpsPosition = pos;
+      _lastGpsTime = sampleTime;
+      _displayPos = LatLng(pos.latitude, pos.longitude);
+      _velEast = 0.0;
+      _velNorth = 0.0;
+      // create symbol and center camera
+      if (controller != null && _userSymbol == null) {
+        controller!.addSymbol(SymbolOptions(geometry: _displayPos!, data: {'asset': 'assets/icons/marker.png'})).then((sym) {
+          _userSymbol = sym;
+          try { controller!.moveCameraImmediate(_displayPos!, 17.5); } catch (e) {}
+          onUpdate?.call();
+        });
+      } else {
+        try { controller?.moveCameraImmediate(_displayPos!, 17.5); } catch (e) {}
+        onUpdate?.call();
+      }
+      return;
+    }
+
+    // shift last -> prev, and set new last
+    _prevGpsPosition = _lastGpsPosition;
+    _prevGpsTime = _lastGpsTime;
+    _lastGpsPosition = pos;
+    _lastGpsTime = sampleTime;
+
+    // Simple outlier rejection: ignore if jump between prev and last is huge (>100m)
+    final double jump = _distanceMeters(_prevGpsPosition!.latitude, _prevGpsPosition!.longitude, _lastGpsPosition!.latitude, _lastGpsPosition!.longitude);
+    if (jump > 100.0) {
+      // treat as spurious — discard by restoring previous last timestamp (do not update prev->last)
+      _lastGpsPosition = _prevGpsPosition;
+      _lastGpsTime = _prevGpsTime;
+      return;
+    }
+
+    // commit sample - no prediction, interpolation is done in _onTick
+    try { onUpdate?.call(); } catch (e) {}
+  }
+
+  void _onTick(Duration elapsed) 
+{
+    if (_lastTick == Duration.zero) {
+      _lastTick = elapsed;
+      return;
+    }
+    final double dt = (elapsed - _lastTick).inMicroseconds / 1000000.0;
+    _lastTick = elapsed;
+    if (dt <= 0) return;
+
+    // If we don't have samples yet, nothing to do
+    if (_prevGpsPosition == null || _lastGpsPosition == null) return;
+
+    // Compute fraction between prev and last sample based on wall-clock time
+    final DateTime now = DateTime.now();
+    final DateTime prevT = _prevGpsTime ?? _lastGpsTime!;
+    final DateTime lastT = _lastGpsTime ?? prevT;
+    final double interval = lastT.difference(prevT).inMilliseconds / 1000.0;
+    double frac;
+    if (interval <= 0.0) {
+      frac = 1.0;
+    } else {
+      frac = now.difference(prevT).inMilliseconds / 1000.0 / interval;
+      if (frac < 0.0) frac = 0.0;
+      if (frac > 1.0) frac = 1.0;
+    }
+
+    // Linear interpolation (lerp) between prev and last positions (no prediction)
+    final double prevLat = _prevGpsPosition!.latitude;
+    final double prevLon = _prevGpsPosition!.longitude;
+    final double lastLat = _lastGpsPosition!.latitude;
+    final double lastLon = _lastGpsPosition!.longitude;
+
+    final double interpLat = prevLat + (lastLat - prevLat) * frac;
+    final double interpLon = prevLon + (lastLon - prevLon) * frac;
+
+    _displayPos = LatLng(interpLat, interpLon);
+
+    // Update symbol and camera each tick for smooth movement
+    try {
+      if (_userSymbol != null && controller != null) {
+        controller!.updateSymbolImmediate(_userSymbol!, _displayPos!);
+        controller!.moveCameraImmediate(_displayPos!, 17.5);
+      }
+    } catch (e) {}
+
+    // notify UI if necessary
+    try { onUpdate?.call(); } catch (e) {}
+  }
+
+  double _distanceMeters(double lat1, double lon1, double lat2, double lon2) {
+    final double R = 6371000.0;
+    final double a1 = lat1 * (math.pi/180.0);
+    final double a2 = lat2 * (math.pi/180.0);
+    final double dLat = (lat2 - lat1) * (math.pi/180.0);
+    final double dLon = (lon2 - lon1) * (math.pi/180.0);
+    final double hav = math.sin(dLat/2)*math.sin(dLat/2) + math.cos(a1)*math.cos(a2)*math.sin(dLon/2)*math.sin(dLon/2);
+    final double c = 2 * math.atan2(math.sqrt(hav), math.sqrt(1-hav));
+    return R * c;
+  }
+
+  double _haversineDistance(double lat1, double lon1, double lat2, double lon2) {
+    return _distanceMeters(lat1, lon1, lat2, lon2);
+  }
+
+  /// If some other part of the app wants to move camera to a previously set target
+  Future<void> moveToTarget({double zoom = 16}) async {
+    if (controller == null || _lastGpsPosition == null) return;
+    await controller!.animateCamera(mb.CameraPosition(target: LatLng(_lastGpsPosition!.latitude, _lastGpsPosition!.longitude), zoom: zoom));
+  }
+
+  /// Backwards-compatible stub for legacy callers that expect a speedometer widget.
+  /// Returns an empty sized box — override later if you need a real widget.
+  Widget buildSpeedometer() {
+    return const SizedBox.shrink();
+  }
+}

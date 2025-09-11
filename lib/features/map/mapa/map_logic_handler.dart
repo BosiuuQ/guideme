@@ -6,10 +6,11 @@ import 'package:guide_me/mapbox_shim.dart' as mb;
 import 'package:guide_me/mapbox_shim.dart';
 import 'package:geolocator/geolocator.dart';
 
-/// MapLogicHandler - uses a Ticker (60fps) to smoothly animate the user marker and camera.
-/// It estimates velocity from incoming GPS samples and advances the displayed position
-/// each tick. New GPS samples adjust the estimated velocity (low-pass) and gently pull
-/// the displayed position towards the GPS to avoid drift.
+/// Improved MapLogicHandler
+/// - Uses per-tick velocity integration (displayPosition += velocity * dt) for immediate reaction
+/// - Low-pass filters incoming speed to avoid jerks but reacts quickly (small alpha)
+/// - Applies small correction pull towards GPS target to remove drift without causing lag
+/// - Keeps camera/symbol updates immediate per tick for responsiveness
 class MapLogicHandler {
   VoidCallback? onUpdate;
   TickerProvider? tickerProvider;
@@ -22,94 +23,31 @@ class MapLogicHandler {
   DateTime? _lastGpsTime;
 
   // Displayed (animated) position in lat/lon degrees
-
-  // Google-like interpolation fields
-  static const Duration _locationInterval = Duration(milliseconds: 200);
-  int _animationDurationMs = _locationInterval.inMilliseconds;
-  LatLng? _prevLocation;
-  LatLng? _targetLocation;
-  DateTime? _lastUpdate;
-  double _bearing = 0.0;
-
-  double _currentSpeed = 0.0; // m/s
-
-  /// Current speed in m/s (public getter)
-  double get currentSpeed => _currentSpeed;
-
-  /// Current speed in km/h
-  double get currentSpeedKmh => _currentSpeed * 3.6;
-  
-  /// Current bearing in degrees (0 = north)
-  double get currentBearing => _bearing;
-  double _lastSpeed = 0.0;
+  LatLng? _displayPos; // current displayed
+  LatLng? _targetLocation; // last GPS target
+  double _bearing = 0.0; // degrees, 0 = north
+  double _currentSpeed = 0.0; // m/s (smoothed)
   double _cameraBearing = 0.0;
 
-  // Dead-reckoning fallback when GPS sparse
-  bool _useDeadReckoning = true;
-  double _deadReckonAlpha = 0.9; // smoothing for velocity use
-  LatLng? _displayPos;
+  // Smoothing params
+  final double _speedAlpha = 0.25; // lower = smoother, higher = more responsive
+  final double _bearingAlpha = 0.12; // for camera bearing smoothing
+  final double _correctionPerSecond = 1.0; // meters per second of correction towards GPS
+  final double _maxCorrectionFactor = 2.0; // cap correction speed
+  final double _minSpeedForBearing = 0.1; // m/s threshold to use bearing from movement
 
-  // --- Holt's double exponential smoothing (level + trend) for smooth cursor movement ---
-  // We maintain smoothing separately in north (lat) and east (lon) directions in meters.
-  double _lastGpsIntervalMs = 1000.0; // fallback expected sample interval in ms
-
-  // origin reference for meter conversions (set on first sample)
-  double? _originLat;
-  double? _originLon;
-  double _meanLatRadForConv = 0.0;
-
-  // smoothing state (meters)
-  double? _Lx; // level east (meters)
-  double? _Tx; // trend east (meters per sample interval)
-  double? _Ly; // level north (meters)
-  double? _Ty; // trend north (meters per sample interval)
-
-  // smoothing parameters (tunable)
-  double _holtAlpha = 0.6; // level smoothing (0..1), higher -> more responsive
-  double _holtBeta = 0.4;  // trend smoothing (0..1), higher -> faster trend updates
-
-
-  // Velocity in meters per second: east (lon), north (lat)
-  double _velEast = 0.0;
-  double _velNorth = 0.0;
-
-  // Continuous motion smoothing parameters
-  double _correctionTauMs = 80.0; // ms time constant for GPS correction (smaller -> faster correction) // ms time constant for GPS correction (smaller -> faster correction)
-  double _velAlpha = 0.9; // smoothing factor for measured velocity (0..1) - higher = more responsive
-
-  // Ticker for smooth updates (~60fps)
+  // Ticker
   Ticker? _ticker;
-  Duration _lastTick = Duration.zero;
-
+  DateTime? _lastTick;
   StreamSubscription<Position>? _posSub;
-
-  // Target and smoothing state for display position
-  LatLng? _targetPos;
-
-  // Interpolation (animation) state for smooth transitions
-  LatLng? _startPos;
-  DateTime? _animStart;
-  Duration _animDuration = const Duration(milliseconds: 300); // default 1s animation
-  // cubic ease-in-out
-  double _easeInOut(double t) {
-    if (t < 0.5) {
-      return 4.0 * t * t * t;
-    } else {
-      return 1.0 - (math.pow(-2.0 * t + 2.0, 3) as double) / 2.0;
-    }
-  }
-  double _measuredSpeed = 0.0; // meters/sec from GPS or computed
-  double _smoothedSpeed = 1.5; // smoothed speed used for interpolation (m/s)
 
   MapLogicHandler({this.onUpdate, this.tickerProvider});
 
   Future<void> onMapCreated(mb.MapboxMapController ctrl) async {
     controller = ctrl;
-    // start ticker for smooth animation if tickerProvider provided
     try {
       if (tickerProvider != null) {
         _ticker = tickerProvider!.createTicker(_onTick);
-        _lastTick = Duration.zero;
         _ticker!.start();
       }
     } catch (e) {}
@@ -137,95 +75,155 @@ class MapLogicHandler {
         return;
       }
 
-      // get initial position synchronously
+      // initial
       try {
         final p = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
         _onNewGps(p);
       } catch (e) {}
 
-      // subscribe to stream - request frequent updates (distanceFilter small)
       _posSub = Geolocator.getPositionStream(
         locationSettings: const LocationSettings(accuracy: LocationAccuracy.best, distanceFilter: 0),
       ).listen((pos) {
         _onNewGps(pos);
       });
     } catch (e) {}
-  
     _ticker?.start();
   }
 
-  
-  // Called on each incoming GPS sample
-  
-
-
-
-  // Called on each incoming GPS sample (Google-maps inspired)
   void _onNewGps(Position pos) {
-    try {
-      // Prepare new target
-      final now = DateTime.now();
-      _prevLocation = _targetLocation ?? _displayPos;
-      _targetLocation = LatLng(pos.latitude, pos.longitude);
-      _lastSpeed = _currentSpeed;
-      _currentSpeed = (pos.speed != null && pos.speed!.isFinite) ? pos.speed! : _currentSpeed;
-
-      // Update bearing based on prev->target if moving
-      if (_prevLocation != null && _currentSpeed > 0.3) {
-        final newBearing = _calculateBearing(_prevLocation!, _targetLocation!);
-        _bearing = newBearing;
+    final now = DateTime.now();
+    // compute measured speed from last GPS if available
+    double measuredSpeed = pos.speed != null && pos.speed!.isFinite ? pos.speed! : 0.0;
+    if (_lastGpsPosition != null && _lastGpsTime != null) {
+      final dt = now.difference(_lastGpsTime!).inMilliseconds / 1000.0;
+      if (dt > 0) {
+        final meters = _distanceMeters(_lastGpsPosition!.latitude, _lastGpsPosition!.longitude, pos.latitude, pos.longitude);
+        final calcSpeed = meters / dt;
+        // prefer sensor speed if present and reasonable, otherwise calcSpeed
+        if (measuredSpeed <= 0.01) measuredSpeed = calcSpeed;
       }
-
-      // compute incoming interval and set animation duration (use fixed locationInterval for snappy updates)
-      final incomingInterval = _lastUpdate != null ? now.difference(_lastUpdate!).inMilliseconds : _locationInterval.inMilliseconds;
-      // Use desired duration SMALL to get millisecond transitions; cap to reasonable bounds
-      _animationDurationMs = math.max(_locationInterval.inMilliseconds, incomingInterval);
-      // Optionally: if you'd like to adapt to device, uncomment below to base on incomingInterval
-      // _animationDurationMs = math.max(_locationInterval.inMilliseconds, incomingInterval);
-
-      _lastUpdate = now;
-
-      // If display not initialized use target immediately
-      if (_displayPos == null) {
-        _displayPos = LatLng(pos.latitude, pos.longitude);
-        try {
-          if (_userSymbol == null && controller != null) {
-            controller!.addSymbol(SymbolOptions(geometry: _displayPos!, data: {'asset': 'assets/icons/marker.png'})).then((sym) {
-              _userSymbol = sym;
-            }).catchError((e) {});
-          } else if (_userSymbol != null && controller != null) {
-            controller!.updateSymbolImmediate(_userSymbol!, _displayPos!);
-          }
-          if (controller != null) controller!.moveCameraImmediate(_displayPos!, 19);
-        } catch (e) {}
-      }
-
-      debugPrint('[MapLogic] _onNewGps: prev=$_prevLocation target=$_targetLocation animMs=$_animationDurationMs speed=${_currentSpeed.toStringAsFixed(2)}');
-    } catch (e) {
-      debugPrint('[MapLogic] _onNewGps error: $e');
     }
-      // notify UI listeners
-      try { onUpdate?.call(); } catch(e) {}
 
+    // low-pass filter speed for smooth but responsive changes
+    _currentSpeed = (_speedAlpha * measuredSpeed) + ((1 - _speedAlpha) * _currentSpeed);
+
+    // set target location
+    _targetLocation = LatLng(pos.latitude, pos.longitude);
+
+    // compute instantaneous bearing from last GPS -> this target if movement present
+    if (_lastGpsPosition != null) {
+      final bearingNow = _calculateBearing(LatLng(_lastGpsPosition!.latitude, _lastGpsPosition!.longitude), _targetLocation!);
+      if (_currentSpeed > _minSpeedForBearing) {
+        _bearing = bearingNow;
+      }
+    }
+
+    // initialize display pos if null (snap to first fix)
+    if (_displayPos == null) {
+      _displayPos = LatLng(pos.latitude, pos.longitude);
+      try {
+        if (_userSymbol == null && controller != null) {
+          controller!.addSymbol(SymbolOptions(geometry: _displayPos!, data: {'asset': 'assets/icons/marker.png'})).then((sym) {
+            _userSymbol = sym;
+          }).catchError((e) {});
+        } else if (_userSymbol != null && controller != null) {
+          controller!.updateSymbolImmediate(_userSymbol!, _displayPos!);
+        }
+        if (controller != null) controller!.moveCameraImmediate(_displayPos!, 19);
+      } catch (e) {}
+    }
+
+    _lastGpsPosition = pos;
+    _lastGpsTime = now;
+
+    // ensure immediate UI update
+    try { onUpdate?.call(); } catch (e) {}
   }
 
+  void _onTick(Duration elapsed) {
+    final now = DateTime.now();
+    if (_lastTick == null) {
+      _lastTick = now;
+      return;
+    }
+    final dt = now.difference(_lastTick!).inMilliseconds / 1000.0;
+    _lastTick = now;
+    if (dt <= 0) return;
 
+    if (_displayPos == null) return;
 
+    // Compute movement by velocity integration (velocity vector from bearing & speed)
+    if (_currentSpeed > 0.001) {
+      final moveMeters = _currentSpeed * dt;
+      _displayPos = _destinationPoint(_displayPos!, _bearing, moveMeters);
+    }
 
+    // Apply correction pull towards GPS target so we don't drift away when GPS updates arrive
+    if (_targetLocation != null) {
+      final distToTarget = _distanceMeters(_displayPos!.latitude, _displayPos!.longitude, _targetLocation!.latitude, _targetLocation!.longitude);
+      if (distToTarget > 0.01) {
+        // correction speed scales: small when close, larger when further, but capped
+        double corrSpeed = (_correctionPerSecond * (distToTarget / 5.0)).clamp(0.0, _maxCorrectionFactor);
+        final corrMeters = corrSpeed * dt;
+        // don't overshoot: if corrMeters >= distToTarget, snap
+        if (corrMeters >= distToTarget) {
+          _displayPos = _targetLocation;
+        } else {
+          final corrBearing = _calculateBearing(_displayPos!, _targetLocation!);
+          _displayPos = _destinationPoint(_displayPos!, corrBearing, corrMeters);
+        }
+      }
+    }
 
-double _distanceMeters(double lat1, double lon1, double lat2, double lon2) {
+    // Smooth camera bearing towards movement bearing or 0 if stopped
+    if (_currentSpeed > _minSpeedForBearing) {
+      _cameraBearing = _lerpAngle(_cameraBearing, _bearing, _bearingAlpha);
+    } else {
+      _cameraBearing = _lerpAngle(_cameraBearing, 0.0, _bearingAlpha);
+    }
+
+    // Update symbol and camera immediately
+    try {
+      if (_userSymbol != null && controller != null && _displayPos != null) {
+        controller!.updateSymbolImmediate(_userSymbol!, _displayPos!);
+        controller!.moveCameraImmediate(_displayPos!, 19);
+      }
+    } catch (e) {}
+
+    // Notify UI
+    try { onUpdate?.call(); } catch (e) {}
+
+    // debug - reduce chatter in production
+    //debugPrint('[MapLogic] tick dt=${dt.toStringAsFixed(3)} display=$_displayPos speed=${_currentSpeed.toStringAsFixed(2)} target=$_targetLocation');
+  }
+
+  // Helpers -------------------------------------------------------------------
+
+  LatLng _destinationPoint(LatLng from, double bearingDeg, double distanceMeters) {
+    // returns new LatLng given start point, bearing (degrees) and distance in meters (great-circle)
     final double R = 6371000.0;
-    final double a1 = lat1 * (math.pi/180.0);
-    final double a2 = lat2 * (math.pi/180.0);
-    final double dLat = (lat2 - lat1) * (math.pi/180.0);
-    final double dLon = (lon2 - lon1) * (math.pi/180.0);
-    final double hav = math.sin(dLat/2)*math.sin(dLat/2) + math.cos(a1)*math.cos(a2)*math.sin(dLon/2)*math.sin(dLon/2);
-    final double c = 2 * math.atan2(math.sqrt(hav), math.sqrt(1-hav));
+    final double brng = bearingDeg * math.pi / 180.0;
+    final double lat1 = from.latitude * math.pi / 180.0;
+    final double lon1 = from.longitude * math.pi / 180.0;
+    final double dDivR = distanceMeters / R;
+    final double lat2 = math.asin(math.sin(lat1) * math.cos(dDivR) + math.cos(lat1) * math.sin(dDivR) * math.cos(brng));
+    final double lon2 = lon1 + math.atan2(math.sin(brng) * math.sin(dDivR) * math.cos(lat1), math.cos(dDivR) - math.sin(lat1) * math.sin(lat2));
+    return LatLng(lat2 * 180.0 / math.pi, lon2 * 180.0 / math.pi);
+  }
+
+  double _distanceMeters(double lat1, double lon1, double lat2, double lon2) {
+    // Haversine
+    final R = 6371000.0;
+    final phi1 = lat1 * math.pi / 180.0;
+    final phi2 = lat2 * math.pi / 180.0;
+    final dPhi = (lat2 - lat1) * math.pi / 180.0;
+    final dLambda = (lon2 - lon1) * math.pi / 180.0;
+    final a = math.sin(dPhi / 2) * math.sin(dPhi / 2) + math.cos(phi1) * math.cos(phi2) * math.sin(dLambda / 2) * math.sin(dLambda / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
     return R * c;
   }
 
   double _lerp(double a, double b, double t) => a + (b - a) * t;
-
   double _lerpAngle(double a, double b, double t) {
     final delta = ((((b - a) + 180) % 360) - 180);
     return (a + delta * t) % 360;
@@ -242,106 +240,28 @@ double _distanceMeters(double lat1, double lon1, double lat2, double lon2) {
     return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
   }
 
+  // Utility methods for consuming code/tests ---------------------------------
 
+  double get currentSpeed => _currentSpeed;
+  double get currentSpeedKmh => _currentSpeed * 3.6;
+  double get currentBearing => _bearing;
 
-  double _haversineDistance(double lat1, double lon1, double lat2, double lon2) {
-    return _distanceMeters(lat1, lon1, lat2, lon2);
-  }
+  void setUserSymbol(mb.Symbol symbol) { _userSymbol = symbol; }
+  LatLng? get displayPosition => _displayPos;
 
-  /// If some other part of the app wants to move camera to a previously set target
-  Future<void> moveToTarget({double zoom = 19}) async {
-    if (controller == null || _lastGpsPosition == null) return;
-    await controller!.animateCamera(mb.CameraPosition(target: LatLng(_lastGpsPosition!.latitude, _lastGpsPosition!.longitude), zoom: zoom));
-  }
-
-  /// Backwards-compatible stub for legacy callers that expect a speedometer widget.
-  /// Returns an empty sized box — override later if you need a real widget.
-  Widget buildSpeedometer() {
-    return const SizedBox.shrink();
-  }
-
-
-  
-
-
-  void _onTick(Duration elapsed) {
-    if (_displayPos == null && _targetLocation == null) return;
-    if (! (controller != null)) {
-      // still no controller - but update displayPos if null and target exists
-      if (_displayPos == null && _targetLocation != null) _displayPos = _targetLocation;
-      return;
-    }
-
-    final now = DateTime.now();
-    if (_lastUpdate == null) {
-      // no recent gps - nothing to interpolate
-      return;
-    }
-
-    final elapsedMs = now.difference(_lastUpdate!).inMilliseconds;
-    double t = (_animationDurationMs > 0) ? (elapsedMs / _animationDurationMs) : 1.0;
-    t = t.clamp(0.0, 1.0);
-
-    // If we have prev and target, interpolate between them for smooth motion
-    if (_prevLocation != null && _targetLocation != null) {
-      final lat = _lerp(_prevLocation!.latitude, _targetLocation!.latitude, t);
-      final lng = _lerp(_prevLocation!.longitude, _targetLocation!.longitude, t);
-      final interpolated = LatLng(lat, lng);
-      _displayPos = interpolated;
-
-      // update camera bearing based on speed
-      if (_currentSpeed > 2.5) {
-        _cameraBearing = _lerpAngle(_cameraBearing, _bearing, 0.05);
-      } else {
-        _cameraBearing = _lerpAngle(_cameraBearing, 0, 0.05);
+  Future<void> snapTo(LatLng pos, {bool moveCamera = false}) async {
+    _displayPos = pos;
+    _targetLocation = pos;
+    _lastGpsPosition = null;
+    _lastGpsTime = null;
+    try {
+      if (_userSymbol == null && controller != null) {
+        _userSymbol = await controller!.addSymbol(SymbolOptions(geometry: pos, data: {'asset': 'assets/icons/marker.png'}));
+      } else if (_userSymbol != null && controller != null) {
+        controller!.updateSymbolImmediate(_userSymbol!, pos);
       }
-
-      // only update symbol/camera if controller present
-      try {
-        if (_userSymbol != null && controller != null && _displayPos != null) {
-          controller!.updateSymbolImmediate(_userSymbol!, _displayPos!);
-          controller!.moveCameraImmediate(_displayPos!, 19);
-        }
-      } catch (e) {}
-
-      debugPrint('[MapLogic] _onTick interp t=${t.toStringAsFixed(3)} display=$_displayPos prev=$_prevLocation target=$_targetLocation');
-      // if finished interpolation, optionally set prevLocation = target
-      if (t >= 1.0) {
-        _prevLocation = _targetLocation;
-      }
-      return;
-    }
-
-    // Dead-reckoning fallback: move display using last known velocity/bearing if no interpolation data
-    if (_useDeadReckoning && _currentSpeed.isFinite && _currentSpeed > 0.05) {
-      // move display by speed * dt (convert m/s to degrees approx)
-      final dt = (elapsed - _lastTick).inMicroseconds.abs() / 1000000.0;
-      final metersPerDegLat = 111320.0;
-      final metersPerDegLon = 111320.0 * math.cos((_displayPos!.latitude) * (math.pi / 180.0));
-      final moveMeters = _currentSpeed * dt;
-      // compute change in lat/lon by bearing
-      final br = _bearing * math.pi / 180.0;
-      final deltaNorth = moveMeters * math.cos(br);
-      final deltaEast = moveMeters * math.sin(br);
-      final dLat = deltaNorth / metersPerDegLat;
-      final dLon = deltaEast / metersPerDegLon;
-      final prev = _displayPos!;
-      _displayPos = LatLng(_displayPos!.latitude + dLat, _displayPos!.longitude + dLon);
-      try {
-        if (_userSymbol != null && controller != null && _displayPos != null) {
-          controller!.updateSymbolImmediate(_userSymbol!, _displayPos!);
-          controller!.moveCameraImmediate(_displayPos!, 19);
-        }
-      } catch (e) {}
-      debugPrint('[MapLogic] _onTick deadReckon moveMeters=${moveMeters.toStringAsFixed(2)} dt=${dt.toStringAsFixed(3)} from=$prev to=${_displayPos} bearing=${_bearing.toStringAsFixed(1)}');
-    }
-        // notify UI listeners after tick updates
-        try { onUpdate?.call(); } catch(e) {}
-
+      if (moveCamera && controller != null) controller!.moveCameraImmediate(pos, 19);
+    } catch (e) {}
+    try { onUpdate?.call(); } catch (e) {}
   }
-
-
-
 }
-
-

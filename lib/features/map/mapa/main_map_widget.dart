@@ -1,9 +1,13 @@
 
 import 'package:flutter/material.dart';
 import 'package:guide_me/mapbox_shim.dart' as mb;
+import '../../clubs/clubs_home_view.dart';
+import '../../spoty/spoty_view.dart';
+import '../../viewpoint/presentation/views/viewpoint_view.dart';
 import 'map_logic_handler.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
+import 'place_search_view.dart';
 
 class MainMapWidget extends StatefulWidget {
   const MainMapWidget({super.key});
@@ -106,16 +110,34 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
                       BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2))
                     ],
                   ),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 12),
-                      const Icon(Icons.search, color: Colors.white),
-                      const SizedBox(width: 8),
-                      const Expanded(
-                        child: Text('Wyszukaj miejsce',
-                            style: TextStyle(color: Colors.white, fontSize: 16)),
-                      ),
-                    ],
+                  child: GestureDetector(
+                    onTap: () async {
+                      final res = await showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        builder: (c) => const PlaceSearchSheet(),
+                      );
+                      if (res != null && res is Map) {
+                        try {
+                          final lat = (res['lat'] as num?)?.toDouble();
+                          final lng = (res['lng'] as num?)?.toDouble();
+                          if (lat != null && lng != null) {
+                            _mapLogic.controller?.moveCameraImmediate(mb.LatLng(lat, lng), 16.0);
+                          }
+                        } catch (e) {}
+                      }
+                    },
+                    child: Row(
+                      children: [
+                        const SizedBox(width: 12),
+                        const Icon(Icons.search, color: Colors.white),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text('Wyszukaj miejsce',
+                              style: TextStyle(color: Colors.white, fontSize: 16)),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height:8),
@@ -127,9 +149,15 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
                     padding: const EdgeInsets.symmetric(horizontal: 5),
                     child: Row(
                       children: [
-                        buildTagDark(Icons.camera_alt_rounded, 'Spoty', () {}),
-                        buildTagDark(Icons.groups_rounded, 'Kluby', () {}),
-                        buildTagDark(Icons.landscape_rounded, 'Punkty widokowe', () {}),
+                        buildTagDark(Icons.camera_alt_rounded, 'Spoty', () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const SpotyView()));
+                        }),
+                        buildTagDark(Icons.groups_rounded, 'Kluby', () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const ClubsHomeView()));
+                        }),
+                        buildTagDark(Icons.landscape_rounded, 'Punkty widokowe', () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const ViewpointView()));
+                        }),
                       ],
                     ),
                   ),

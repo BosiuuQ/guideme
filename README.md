@@ -1,12 +1,3 @@
-## TODO
-
-1. Zmienić metodę rsowania kursora w trybie mapy tak, aby był on pod nazwami ulic (Zrobione) (E)
-2. Optymalizacja kamery - obracanie się, skręcanie, naprawić zablokowanie przeciągania kamery, naprawić to gdy stoisz w miejscu albo wykryje jakieś 1-3km wolniej jazdy to potrafiło to zwariować i się obracało bez powodu (ZROBIONE CALE) (E)
-3. naprawić instrukcje na górze skręty w lewo w prawo bo trochę zepsute haha (M)
-4. wykrywanie zjazdu z trasy dodać/naprawic (M)
-
-5. przy odblokowaniu tej kamery pojawił się problem - kursor w trybie trasy jest nad widgetami również a nie może tak być, oraz przy przesuwaniu kamery czasami wariuje i się nie przesuwa płynnie (E/M, Ale raczej E)
-
 # 📱 Instrukcja uruchomienia aplikacji Flutter (Google Maps) na emulatorze
 
 ## ✅ Wymagania wstępne

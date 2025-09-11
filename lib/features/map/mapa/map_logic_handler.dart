@@ -6,11 +6,7 @@ import 'package:guide_me/mapbox_shim.dart' as mb;
 import 'package:guide_me/mapbox_shim.dart';
 import 'package:geolocator/geolocator.dart';
 
-/// Improved MapLogicHandler
-/// - Uses per-tick velocity integration (displayPosition += velocity * dt) for immediate reaction
-/// - Low-pass filters incoming speed to avoid jerks but reacts quickly (small alpha)
-/// - Applies small correction pull towards GPS target to remove drift without causing lag
-/// - Keeps camera/symbol updates immediate per tick for responsiveness
+
 class MapLogicHandler {
   VoidCallback? onUpdate;
   TickerProvider? tickerProvider;
@@ -18,23 +14,20 @@ class MapLogicHandler {
   mb.MapboxMapController? controller;
   mb.Symbol? _userSymbol;
 
-  // GPS tracking state
   Position? _lastGpsPosition;
   DateTime? _lastGpsTime;
 
-  // Displayed (animated) position in lat/lon degrees
-  LatLng? _displayPos; // current displayed
-  LatLng? _targetLocation; // last GPS target
-  double _bearing = 0.0; // degrees, 0 = north
-  double _currentSpeed = 0.0; // m/s (smoothed)
+  LatLng? _displayPos;
+  LatLng? _targetLocation;
+  double _bearing = 0.0;
+  double _currentSpeed = 0.0;
   double _cameraBearing = 0.0;
 
-  // Smoothing params
-  final double _speedAlpha = 0.25; // lower = smoother, higher = more responsive
-  final double _bearingAlpha = 0.12; // for camera bearing smoothing
-  final double _correctionPerSecond = 1.0; // meters per second of correction towards GPS
-  final double _maxCorrectionFactor = 2.0; // cap correction speed
-  final double _minSpeedForBearing = 0.1; // m/s threshold to use bearing from movement
+  final double _speedAlpha = 0.25;
+  final double _bearingAlpha = 0.12;
+  final double _correctionPerSecond = 1.0;
+  final double _maxCorrectionFactor = 2.0;
+  final double _minSpeedForBearing = 0.1;
 
   // Ticker
   Ticker? _ticker;
@@ -75,7 +68,6 @@ class MapLogicHandler {
         return;
       }
 
-      // initial
       try {
         final p = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
         _onNewGps(p);
@@ -92,25 +84,20 @@ class MapLogicHandler {
 
   void _onNewGps(Position pos) {
     final now = DateTime.now();
-    // compute measured speed from last GPS if available
     double measuredSpeed = pos.speed != null && pos.speed!.isFinite ? pos.speed! : 0.0;
     if (_lastGpsPosition != null && _lastGpsTime != null) {
       final dt = now.difference(_lastGpsTime!).inMilliseconds / 1000.0;
       if (dt > 0) {
         final meters = _distanceMeters(_lastGpsPosition!.latitude, _lastGpsPosition!.longitude, pos.latitude, pos.longitude);
         final calcSpeed = meters / dt;
-        // prefer sensor speed if present and reasonable, otherwise calcSpeed
         if (measuredSpeed <= 0.01) measuredSpeed = calcSpeed;
       }
     }
 
-    // low-pass filter speed for smooth but responsive changes
     _currentSpeed = (_speedAlpha * measuredSpeed) + ((1 - _speedAlpha) * _currentSpeed);
 
-    // set target location
     _targetLocation = LatLng(pos.latitude, pos.longitude);
 
-    // compute instantaneous bearing from last GPS -> this target if movement present
     if (_lastGpsPosition != null) {
       final bearingNow = _calculateBearing(LatLng(_lastGpsPosition!.latitude, _lastGpsPosition!.longitude), _targetLocation!);
       if (_currentSpeed > _minSpeedForBearing) {
@@ -118,7 +105,6 @@ class MapLogicHandler {
       }
     }
 
-    // initialize display pos if null (snap to first fix)
     if (_displayPos == null) {
       _displayPos = LatLng(pos.latitude, pos.longitude);
       try {
@@ -152,20 +138,16 @@ class MapLogicHandler {
 
     if (_displayPos == null) return;
 
-    // Compute movement by velocity integration (velocity vector from bearing & speed)
     if (_currentSpeed > 0.001) {
       final moveMeters = _currentSpeed * dt;
       _displayPos = _destinationPoint(_displayPos!, _bearing, moveMeters);
     }
 
-    // Apply correction pull towards GPS target so we don't drift away when GPS updates arrive
     if (_targetLocation != null) {
       final distToTarget = _distanceMeters(_displayPos!.latitude, _displayPos!.longitude, _targetLocation!.latitude, _targetLocation!.longitude);
       if (distToTarget > 0.01) {
-        // correction speed scales: small when close, larger when further, but capped
         double corrSpeed = (_correctionPerSecond * (distToTarget / 5.0)).clamp(0.0, _maxCorrectionFactor);
         final corrMeters = corrSpeed * dt;
-        // don't overshoot: if corrMeters >= distToTarget, snap
         if (corrMeters >= distToTarget) {
           _displayPos = _targetLocation;
         } else {
@@ -175,14 +157,12 @@ class MapLogicHandler {
       }
     }
 
-    // Smooth camera bearing towards movement bearing or 0 if stopped
     if (_currentSpeed > _minSpeedForBearing) {
       _cameraBearing = _lerpAngle(_cameraBearing, _bearing, _bearingAlpha);
     } else {
       _cameraBearing = _lerpAngle(_cameraBearing, 0.0, _bearingAlpha);
     }
 
-    // Update symbol and camera immediately
     try {
       if (_userSymbol != null && controller != null && _displayPos != null) {
         controller!.updateSymbolImmediate(_userSymbol!, _displayPos!);
@@ -190,17 +170,12 @@ class MapLogicHandler {
       }
     } catch (e) {}
 
-    // Notify UI
     try { onUpdate?.call(); } catch (e) {}
 
-    // debug - reduce chatter in production
-    //debugPrint('[MapLogic] tick dt=${dt.toStringAsFixed(3)} display=$_displayPos speed=${_currentSpeed.toStringAsFixed(2)} target=$_targetLocation');
   }
 
-  // Helpers -------------------------------------------------------------------
 
   LatLng _destinationPoint(LatLng from, double bearingDeg, double distanceMeters) {
-    // returns new LatLng given start point, bearing (degrees) and distance in meters (great-circle)
     final double R = 6371000.0;
     final double brng = bearingDeg * math.pi / 180.0;
     final double lat1 = from.latitude * math.pi / 180.0;
@@ -212,7 +187,6 @@ class MapLogicHandler {
   }
 
   double _distanceMeters(double lat1, double lon1, double lat2, double lon2) {
-    // Haversine
     final R = 6371000.0;
     final phi1 = lat1 * math.pi / 180.0;
     final phi2 = lat2 * math.pi / 180.0;
@@ -240,7 +214,6 @@ class MapLogicHandler {
     return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
   }
 
-  // Utility methods for consuming code/tests ---------------------------------
 
   double get currentSpeed => _currentSpeed;
   double get currentSpeedKmh => _currentSpeed * 3.6;

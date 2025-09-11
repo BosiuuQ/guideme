@@ -9,7 +9,6 @@ class PlaceSearchSheet extends StatefulWidget {
   final mb.LatLng? currentLocation;
   const PlaceSearchSheet({super.key, this.currentLocation});
 
-  // Replace with your Mapbox public token or provide it via environment/config.
   static const String _mapboxToken = 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg';
 
   @override
@@ -61,7 +60,6 @@ class _PlaceSearchSheetState extends State<PlaceSearchSheet> {
     };
 
     if (widget.currentLocation != null) {
-      // Mapbox expects longitude,latitude for proximity
       params['proximity'] = '${widget.currentLocation!.longitude},${widget.currentLocation!.latitude}';
     }
 
@@ -72,7 +70,6 @@ class _PlaceSearchSheetState extends State<PlaceSearchSheet> {
       if (response.statusCode == 200) {
         final data = json.decode(response.body) as Map<String, dynamic>;
         final features = (data['features'] as List<dynamic>?) ?? [];
-        // Simple client-side ranking: prefer features with shorter text and those with matching text prefix
         final q = input.toLowerCase().trim();
         int scoreFor(Map f) {
           try {
@@ -121,9 +118,7 @@ class _PlaceSearchSheetState extends State<PlaceSearchSheet> {
           lng = (center[0] as num).toDouble();
           lat = (center[1] as num).toDouble();
         }
-        // save recent search
         if (placeName is String && placeName.isNotEmpty) _saveSearch(placeName);
-        // return selected place to caller
         Navigator.of(context).pop({
           'lat': lat,
           'lng': lng,

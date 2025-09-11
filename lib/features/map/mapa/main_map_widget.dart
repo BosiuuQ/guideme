@@ -27,7 +27,6 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
     _mapLogic = MapLogicHandler();
     _mapLogic.tickerProvider = this;
     _mapLogic.onUpdate = () {
-      // update speed and bearing display when map logic reports updates
       try {
         final v = _mapLogic.currentSpeedKmh;
         final b = _mapLogic.currentBearing;
@@ -83,7 +82,6 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
         // Map (takes full area)
         Positioned.fill(child: _buildMap()),
 
-        // Center cursor (keep existing asset but scale ~1.2x)
         Center(
           child: IgnorePointer(
             child: SizedBox(
@@ -141,7 +139,6 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
                   ),
                 ),
                 const SizedBox(height:8),
-                // Row of tag buttons (Spoty, Kluby, Punkty widokowe) - dark style
                 SizedBox(
                   height: 40,
                   child: SingleChildScrollView(
@@ -166,9 +163,6 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
             ),
           ),
         ),
-        // Speedometer bottom-left
-        
-        // Speedometer (circular, dark theme) - moved to bottom-right
         Positioned(
           left: 16.0,
           bottom: 16.0,
@@ -198,7 +192,6 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
           ),
         ),
 
-        // Compass (circular, dark theme) - shows north direction using rotation
         Positioned(
           right: 16.0,
           bottom: 16.0,

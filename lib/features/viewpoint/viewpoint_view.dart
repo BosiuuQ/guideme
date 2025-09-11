@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../map/mapbox.shim.dart' show MapboxMap, MapboxMapController, CameraPosition, LatLng, SymbolOptions;
+import 'package:guide_me/mapbox_shim.dart' show MapboxMap, MapboxMapController, CameraPosition, LatLng, SymbolOptions;
 
 class ViewpointView extends StatefulWidget {
   const ViewpointView({Key? key}) : super(key: key);
@@ -10,46 +10,54 @@ class ViewpointView extends StatefulWidget {
 
 class _ViewpointViewState extends State<ViewpointView> {
   MapboxMapController? _controller;
+
   final List<Map<String, dynamic>> _viewpoints = [
     {'title': 'Punkt widokowy 1', 'pos': LatLng(52.2400, 21.0150)},
     {'title': 'Punkt widokowy 2', 'pos': LatLng(50.0640, 19.9455)},
     {'title': 'Punkt widokowy 3', 'pos': LatLng(51.1100, 17.0300)},
   ];
 
-  Future<void> _onMapCreated(MapboxMapController controller) async {
+  void _onMapCreated(MapboxMapController controller) {
     _controller = controller;
+    // Add markers (symbols) for each viewpoint
     for (var v in _viewpoints) {
-      try { await controller.addSymbol(SymbolOptions(geometry: v['pos'], iconSize: 1.0, data: {'asset':''})); } catch (e) {}
+      final LatLng p = v['pos'] as LatLng;
+      try {
+        _controller?.addSymbol(SymbolOptions(geometry: p, iconImage: 'marker-15', iconSize: 1.2, data: {'title': v['title']}));
+      } catch (e) {}
     }
-    setState(() {});
+  }
+
+  void _goTo(LatLng pos) {
+    _controller?.animateCamera(CameraPosition(target: pos, zoom: 16.0));
   }
 
   @override
   Widget build(BuildContext context) {
-    final initial = CameraPosition(target: _viewpoints[0]['pos'] as LatLng, zoom: 12.0);
     return Scaffold(
       appBar: AppBar(title: const Text('Punkty widokowe')),
       body: Column(
         children: [
-          SizedBox(
-            height: 300,
+          Expanded(
+            flex: 2,
             child: MapboxMap(
-              initialCameraPosition: initial,
-              onMapCreated: (c) => _onMapCreated(c),
-              myLocationEnabled: false,
-              trackCameraPosition: false,
+              initialCameraPosition: const CameraPosition(target: LatLng(52.2297, 21.0122), zoom: 13.0),
+              onMapCreated: _onMapCreated,
+              trackCameraPosition: true,
             ),
           ),
           Expanded(
+            flex: 1,
             child: ListView.builder(
               itemCount: _viewpoints.length,
-              itemBuilder: (ctx, idx) {
-                final v = _viewpoints[idx];
+              itemBuilder: (context, index) {
+                final v = _viewpoints[index];
+                final LatLng pos = v['pos'] as LatLng;
                 return ListTile(
                   leading: const Icon(Icons.landscape),
-                  title: Text(v['title']),
-                  subtitle: Text('${(v['pos'] as LatLng).latitude.toStringAsFixed(5)}, ${(v['pos'] as LatLng).longitude.toStringAsFixed(5)}'),
-                  onTap: () => _controller?.animateCamera(CameraPosition(target: v['pos'] as LatLng, zoom: 16.0)),
+                  title: Text(v['title'] as String),
+                  subtitle: Text('${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}'),
+                  onTap: () => _goTo(pos),
                 );
               },
             ),

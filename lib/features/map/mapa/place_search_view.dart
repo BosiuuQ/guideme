@@ -10,7 +10,7 @@ class PlaceSearchSheet extends StatefulWidget {
   const PlaceSearchSheet({super.key, this.currentLocation});
 
   // Replace with your Mapbox public token or provide it via environment/config.
-  static const String _mapboxToken = 'pk.YOUR_MAPBOX_ACCESS_TOKEN';
+  static const String _mapboxToken = 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg';
 
   @override
   State<PlaceSearchSheet> createState() => _PlaceSearchSheetState();

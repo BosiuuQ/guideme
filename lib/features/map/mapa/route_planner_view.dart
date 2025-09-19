@@ -162,7 +162,6 @@ class _RoutePlannerViewState extends State<RoutePlannerView> {
                             icon: const Icon(Icons.play_arrow),
                             label: const Text('Rozpocznij'),
                           )
-
                         ],
                       ),
                     ),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:guide_me/mapbox_shim.dart' as mb;
 import 'map_logic_handler.dart';
+import '../../../core/constants/app_assets.dart';
+import '../../../core/presentation/widgets/app_drawer_widget.dart';
 
 class ActiveNavigationView extends StatefulWidget {
   final mb.LatLng origin;
@@ -127,81 +129,63 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> with Single
 
   @override
   Widget build(BuildContext context) {
-    // ensure we measure bottom widget after layout
     WidgetsBinding.instance.addPostFrameCallback((_) => _measureBottomWidget());
     final double overlayBottom = (_bottomWidgetHeight > 0) ? _bottomWidgetHeight + 20.0 : 100.0;
 
     return Scaffold(
+      endDrawer: const AppDrawerWidget(),
+      appBar: AppBar(
+        centerTitle: false,
+        leadingWidth: 0,
+        title: Image.asset(
+          AppAssets.logoImg,
+          width: 100.0,
+          height: 100.0,
+          alignment: AlignmentDirectional.centerStart,
+        ),
+      ),
       body: Stack(
         children: [
           Positioned.fill(child: _buildMap()),
 
-          // center crosshair like main map
+          // crosshair marker
           Center(
             child: IgnorePointer(
               child: SizedBox(
-                width: 48.0 * 1.2,
-                height: 48.0 * 1.2,
+                width: 58.0,
+                height: 58.0,
                 child: Image.asset('assets/icons/marker.png', fit: BoxFit.contain),
               ),
             ),
           ),
 
-          // Top guide bar (flush to top edge)
+          // Top instructions bar - flush with bottom of AppBar
           Positioned(
             left: 0,
             right: 0,
             top: 0,
-            child: Container(
-              height: 56,
-              decoration: BoxDecoration(
-                color: Colors.black,
-                borderRadius: BorderRadius.only(bottomLeft: Radius.circular(12), bottomRight: Radius.circular(12)),
-                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2))],
-              ),
-              child: Row(
-                children: [
-                  SizedBox(width: 12),
-                  Icon(Icons.menu, color: Colors.white70),
-                  SizedBox(width: 8),
-                  Expanded(child: Text('Guide Me', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold))),
-                  SizedBox(width: 12),
-                ],
-              ),
-            ),
-          ),
-
-          // Top instructions bar (immediately under guide bar) - flush left/right, top corners square
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 56,
             child: Material(
               elevation: 6,
               color: Colors.black87,
-              borderRadius: BorderRadius.only(bottomLeft: Radius.circular(12), bottomRight: Radius.circular(12)),
+              borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(12),
+                bottomRight: Radius.circular(12),
+              ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 child: Row(
                   children: [
-                    Icon(Icons.navigation, color: Colors.white, size: 22),
-                    SizedBox(width: 12),
+                    const Icon(Icons.navigation, color: Colors.white, size: 24),
+                    const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Następny manewr', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                          SizedBox(height: 4),
-                          Text('Skręć w prawo za 200 m', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                        children: const [
+                          Text('Następny manewr', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                          SizedBox(height: 6),
+                          Text('Skręć w prawo za 200 m', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                         ],
                       ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(_formatArrival(), style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                        Text(_minutesLeft(), style: TextStyle(color: Colors.white70, fontSize: 12)),
-                      ],
                     ),
                   ],
                 ),
@@ -209,7 +193,7 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> with Single
             ),
           ),
 
-          // Speedometer - aligned right, positioned dynamically above bottom widget
+          // Speedometer
           Positioned(
             right: 16,
             bottom: overlayBottom,
@@ -218,56 +202,56 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> with Single
               color: Colors.transparent,
               borderRadius: BorderRadius.circular(999),
               child: Container(
-                width: 88,
-                height: 88,
+                width: 94,
+                height: 94,
                 decoration: BoxDecoration(
                   color: Colors.black87,
                   shape: BoxShape.circle,
-                  boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0,3))],
+                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 3))],
                   border: Border.all(color: Colors.white10, width: 1),
                 ),
-                padding: const EdgeInsets.all(8.0),
+                padding: const EdgeInsets.all(10.0),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text('${_speedKmh.toStringAsFixed(0)}', style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)),
-                    SizedBox(height: 2),
-                    Text('km/h', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    Text('${_speedKmh.toStringAsFixed(0)}',
+                        style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    const Text('km/h', style: TextStyle(color: Colors.white70, fontSize: 14)),
                   ],
                 ),
               ),
             ),
           ),
 
-          // 'Zakończ' button - aligned left, same vertical offset as speedometer
+          // 'Zakończ' button
           Positioned(
             left: 20,
             bottom: overlayBottom,
             child: GestureDetector(
-              onTap: () {
-                Navigator.pop(context);
-              },
+              onTap: () => Navigator.pop(context),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
                 decoration: BoxDecoration(
                   color: Colors.red.withOpacity(0.18),
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0,4))],
+                  boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 4))],
                   border: Border.all(color: Colors.red.withOpacity(0.28)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: const [
-                    Icon(Icons.close, color: Colors.white, size: 18),
-                    SizedBox(width: 10),
-                    Text('Zakończ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    Icon(Icons.close, color: Colors.white, size: 20),
+                    SizedBox(width: 12),
+                    Text('Zakończ', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
             ),
           ),
 
-          // Bottom info widget - flush to bottom edge, only top corners rounded
+          // Bottom info widget
+          // Bottom info widget
           Positioned(
             left: 0,
             right: 0,
@@ -278,27 +262,44 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> with Single
               child: Material(
                 key: _bottomKey,
                 elevation: 12,
-                borderRadius: BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12)),
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(12),
+                  topRight: Radius.circular(12),
+                ),
                 color: Colors.black87,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  height: 120,
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.start, // <<< dociąga tekst do góry
                         children: [
-                          Text('Przewidywany czas przybycia', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                          SizedBox(height: 6),
-                          Text(_formatArrival(), style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                          const Text('Przewidywany czas przybycia',
+                              style: TextStyle(color: Colors.white70, fontSize: 14)),
+                          const SizedBox(height: 8),
+                          Text(_formatArrival(),
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold)),
                         ],
                       ),
-                      Spacer(),
+                      const Spacer(),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisAlignment: MainAxisAlignment.start, // <<< to samo po prawej
                         children: [
-                          Text('Pozostało', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                          SizedBox(height: 6),
-                          Text(_minutesLeft(), style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                          const Text('Pozostało',
+                              style: TextStyle(color: Colors.white70, fontSize: 14)),
+                          const SizedBox(height: 8),
+                          Text(_minutesLeft(),
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold)),
                         ],
                       ),
                     ],

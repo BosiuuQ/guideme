@@ -8,6 +8,7 @@ import 'map_logic_handler.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'place_search_view.dart';
+import 'route_planner_view.dart';
 
 class MainMapWidget extends StatefulWidget {
   const MainMapWidget({super.key});
@@ -113,7 +114,7 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
                       final res = await showModalBottomSheet(
                         context: context,
                         isScrollControlled: true,
-                        builder: (c) => const PlaceSearchSheet(),
+                        builder: (c) => PlaceSearchSheet(currentLocation: _mapLogic.displayPosition),
                       );
                       if (res != null && res is Map) {
                         try {
@@ -121,6 +122,8 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
                           final lng = (res['lng'] as num?)?.toDouble();
                           if (lat != null && lng != null) {
                             _mapLogic.controller?.moveCameraImmediate(mb.LatLng(lat, lng), 16.0);
+                            Navigator.of(context).push(MaterialPageRoute(builder: (_) => RoutePlannerView(origin: _mapLogic.displayPosition ?? mb.LatLng(lat,lng), destination: mb.LatLng(lat,lng), title: (res['name'] as String?) ?? 'Cel',)));
+                          
                           }
                         } catch (e) {}
                       }

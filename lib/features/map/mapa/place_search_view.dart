@@ -1,33 +1,65 @@
-
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:guide_me/mapbox_shim.dart' as mb;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:math';
+import 'package:guide_me/mapbox_shim.dart' as mb;
 
+/// Dark, bottom-sheet-first Place Search rewritten for Mapbox Search Box API
+/// - Designed to be shown with showModalBottomSheet(... isScrollControlled: true)
+/// - Slides up from bottom to ~2/3 of the screen, rounded top corners
+/// - Dark theme, modern look, drag handle, animated list tiles
+/// - Uses Mapbox SearchBox /suggest + /retrieve with session_token
+///
 class PlaceSearchSheet extends StatefulWidget {
   final mb.LatLng? currentLocation;
-  const PlaceSearchSheet({super.key, this.currentLocation});
+  /// Optional height fraction (0.2 .. 0.95). Default ~0.66
+  final double heightFraction;
+  const PlaceSearchSheet({super.key, this.currentLocation, this.heightFraction = 0.66});
 
-  // Put your Mapbox token here. If empty or invalid, the code will fallback to OpenStreetMap Nominatim.
+  // Set your token here (or inject from env/secrets)
   static const String _mapboxToken = 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg';
 
   @override
   State<PlaceSearchSheet> createState() => _PlaceSearchSheetState();
 }
 
-class _PlaceSearchSheetState extends State<PlaceSearchSheet> {
+class _PlaceSearchSheetState extends State<PlaceSearchSheet> with SingleTickerProviderStateMixin {
   final TextEditingController _ctrl = TextEditingController();
+  final FocusNode _focus = FocusNode();
+  Timer? _debounce;
+  bool _loading = false;
   List<Map<String, dynamic>> _suggestions = [];
   List<String> _recentSearches = [];
-  bool _loading = false;
-  String? _statusMessage;
+  String _sessionToken = _generateSessionToken();
+  final Map<String, Map<String, dynamic>> _retrieveCache = {};
+
+  static String _generateSessionToken() {
+    final rnd = Random.secure();
+    String hex(int n) => List.generate(n, (_) => rnd.nextInt(256)).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    final a = hex(4);
+    final b = hex(2);
+    final c = ((rnd.nextInt(0xffff) & 0x0fff) | 0x4000).toRadixString(16).padLeft(4, '0');
+    final d = ((rnd.nextInt(0xffff) & 0x3fff) | 0x8000).toRadixString(16).padLeft(4, '0');
+    final e = hex(6);
+    return '$a-$b-$c-$d-$e';
+  }
 
   @override
   void initState() {
     super.initState();
     _loadRecent();
+    _ctrl.addListener(_onTextChanged);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _ctrl.removeListener(_onTextChanged);
+    _ctrl.dispose();
+    _focus.dispose();
+    super.dispose();
   }
 
   Future<void> _loadRecent() async {
@@ -37,260 +69,350 @@ class _PlaceSearchSheetState extends State<PlaceSearchSheet> {
     });
   }
 
-  Future<void> _saveSearch(String search) async {
+  Future<void> _saveRecent(String text) async {
+    if (text.trim().isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
-    _recentSearches.remove(search);
-    _recentSearches.insert(0, search);
-    if (_recentSearches.length > 6) _recentSearches = _recentSearches.sublist(0, 6);
-    await prefs.setStringList('recent_searches', _recentSearches);
+    setState(() {
+      _recentSearches.remove(text);
+      _recentSearches.insert(0, text);
+      if (_recentSearches.length > 12) _recentSearches = _recentSearches.sublist(0, 12);
+      prefs.setStringList('recent_searches', _recentSearches);
+    });
   }
 
-  Future<void> _fetchSuggestions(String input) async {
-    if (input.trim().isEmpty) {
-      setState(() {
-        _suggestions = [];
-        _statusMessage = null;
-      });
-      return;
-    }
-    setState(() {
-      _loading = true;
-      _statusMessage = null;
+  void _onTextChanged() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      final q = _ctrl.text.trim();
+      if (q.isEmpty) {
+        setState(() {
+          _suggestions = [];
+          _loading = false;
+        });
+        return;
+      }
+      _fetchSuggestions(q);
     });
+  }
 
-    // helper to map Mapbox feature list into internal suggestion format
-    List<Map<String,dynamic>> _mapMapboxFeatures(List<dynamic> features) {
-      return features.map((f) {
-        return {
-          'name': f['text'] ?? f['place_name'] ?? '',
-          'place_name': f['place_name'] ?? '',
-          'lat': (f['center'] != null && f['center'].length >= 2) ? (f['center'][1] as num).toDouble() : null,
-          'lng': (f['center'] != null && f['center'].length >= 2) ? (f['center'][0] as num).toDouble() : null,
-          'raw': f,
-        };
-      }).toList();
+  Future<void> _fetchSuggestions(String query) async {
+    if (query.isEmpty) return;
+    setState(() { _loading = true; });
+
+    final token = Uri.encodeQueryComponent(query);
+    final lang = 'pl';
+    final limit = 8;
+
+    String proximity = '';
+    if (widget.currentLocation != null) {
+      proximity = '&proximity=${widget.currentLocation!.longitude},${widget.currentLocation!.latitude}';
     }
+
+    final url = 'https://api.mapbox.com/search/searchbox/v1/suggest?q=$token&language=$lang&limit=$limit&session_token=$_sessionToken$proximity&access_token=${Uri.encodeQueryComponent(PlaceSearchSheet._mapboxToken)}';
 
     try {
-      final encoded = Uri.encodeComponent(input);
-      final proximity = (widget.currentLocation != null)
-          ? '&proximity=${widget.currentLocation!.longitude},${widget.currentLocation!.latitude}'
-          : '';
-
-      // First attempt: Mapbox with types (poi,place,address)
-      if (PlaceSearchSheet._mapboxToken.isNotEmpty) {
-        final urlWithTypes =
-            'https://api.mapbox.com/geocoding/v5/mapbox.places/$encoded.json?access_token=${PlaceSearchSheet._mapboxToken}&autocomplete=true&types=poi&language=pl&fuzzyMatch=true&limit=10$proximity';
-        final res1 = await http.get(Uri.parse(urlWithTypes));
-        if (res1.statusCode == 200) {
-          final j = json.decode(res1.body) as Map<String, dynamic>;
-          final features = (j['features'] as List<dynamic>?) ?? [];
-          if (features.isNotEmpty) {
-            setState(() {
-              _suggestions = _mapMapboxFeatures(features);
-              _loading = false;
-            });
-            return;
-          }
-        }
-
-        // Second attempt: Mapbox without types to broaden matches
-        final urlNoTypes =
-            'https://api.mapbox.com/geocoding/v5/mapbox.places/$encoded.json?access_token=${PlaceSearchSheet._mapboxToken}&autocomplete=true&language=pl&fuzzyMatch=true&limit=10$proximity';
-        final res2 = await http.get(Uri.parse(urlNoTypes));
-        if (res2.statusCode == 200) {
-          final j = json.decode(res2.body) as Map<String, dynamic>;
-          final features = (j['features'] as List<dynamic>?) ?? [];
-          if (features.isNotEmpty) {
-            setState(() {
-              _suggestions = _mapMapboxFeatures(features);
-              _loading = false;
-            });
-            return;
-          }
-        }
-
-        // Third attempt: Mapbox with BROAD types (place, locality, neighborhood, address, poi)
-        final urlBroadTypes =
-            'https://api.mapbox.com/geocoding/v5/mapbox.places/$encoded.json?access_token=${PlaceSearchSheet._mapboxToken}&autocomplete=true&types=place,locality,neighborhood,address,poi&language=pl&fuzzyMatch=true&limit=10$proximity';
-        final res3 = await http.get(Uri.parse(urlBroadTypes));
-        if (res3.statusCode == 200) {
-          final j3 = json.decode(res3.body) as Map<String, dynamic>;
-          final features3 = (j3['features'] as List<dynamic>?) ?? [];
-          if (features3.isNotEmpty) {
-            setState(() {
-              _suggestions = _mapMapboxFeatures(features3);
-              _loading = false;
-            });
-            return;
-          }
-        }
-
-        // If Mapbox returned no features, fall through to fallback below.
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
+        final j = json.decode(res.body) as Map<String, dynamic>?;
+        final suggestions = (j?['suggestions'] as List<dynamic>?) ?? [];
+        setState(() {
+          _suggestions = suggestions.map((s) => Map<String, dynamic>.from(s as Map)).toList();
+          _loading = false;
+        });
+      } else {
+        setState(() { _suggestions = []; _loading = false; });
       }
-
-      // Only use fallback to Nominatim if no Mapbox token provided.
-      if (PlaceSearchSheet._mapboxToken.isEmpty) {
-        final nominatimUrl = 'https://nominatim.openstreetmap.org/search?q=${Uri.encodeQueryComponent(input)}&format=json&addressdetails=1&limit=8';
-        final resN = await http.get(Uri.parse(nominatimUrl), headers: {'User-Agent': 'GuideMeApp/1.0 (+https://example.com)'});
-        if (resN.statusCode == 200) {
-          final arr = json.decode(resN.body) as List<dynamic>;
-          if (arr.isNotEmpty) {
-            final list = arr.map((e) {
-              final lat = (e['lat'] != null) ? double.tryParse(e['lat'].toString()) : null;
-              final lon = (e['lon'] != null) ? double.tryParse(e['lon'].toString()) : null;
-              final display = e['display_name'] ?? e['name'] ?? input;
-              return {
-                'name': display.split(',').first,
-                'place_name': display,
-                'lat': lat,
-                'lng': lon,
-                'raw': e,
-              };
-            }).toList();
-            setState(() {
-              _suggestions = List<Map<String,dynamic>>.from(list);
-              _loading = false;
-              _statusMessage = 'Użyto OpenStreetMap (fallback)';
-            });
-            return;
-          }
-        }
-      }
-
-      // no results
-      setState(() {
-        _suggestions = [];
-        _statusMessage = 'Brak wyników';
-        _loading = false;
-      });
     } catch (e) {
-      setState(() {
-        _suggestions = [];
-        _statusMessage = 'Błąd podczas wyszukiwania';
-        _loading = false;
-      });
+      setState(() { _loading = false; _suggestions = []; });
     }
   }
 
-  Widget _buildRecent() {
-    if (_recentSearches.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Text('Ostatnie wyszukiwania', style: TextStyle(fontSize: 13, color: Colors.grey)),
+  Future<Map<String, dynamic>?> _retrieveFeature(String mapboxId) async {
+    if (mapboxId.isEmpty) return null;
+    if (_retrieveCache.containsKey(mapboxId)) return _retrieveCache[mapboxId];
+
+    final url = 'https://api.mapbox.com/search/searchbox/v1/retrieve/${Uri.encodeComponent(mapboxId)}?session_token=$_sessionToken&access_token=${Uri.encodeQueryComponent(PlaceSearchSheet._mapboxToken)}&language=pl';
+    try {
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200) {
+        final j = json.decode(res.body) as Map<String, dynamic>?;
+        final features = (j?['features'] as List<dynamic>?) ?? [];
+        if (features.isNotEmpty) {
+          final f = Map<String, dynamic>.from(features.first as Map);
+          Map<String, dynamic>? props = f['properties'] is Map ? Map<String, dynamic>.from(f['properties'] as Map) : null;
+          double? lat;
+          double? lng;
+          if (props != null) {
+            if (props.containsKey('coordinates')) {
+              try {
+                final coords = props['coordinates'] as Map<String, dynamic>;
+                lat = (coords['latitude'] as num?)?.toDouble();
+                lng = (coords['longitude'] as num?)?.toDouble();
+              } catch (_) {}
+            }
+          }
+          if ((lat == null || lng == null) && f['geometry'] is Map) {
+            try {
+              final geom = f['geometry'] as Map<String, dynamic>;
+              final coords = (geom['coordinates'] as List<dynamic>?) ?? [];
+              if (coords.length >= 2) {
+                lng = (coords[0] as num).toDouble();
+                lat = (coords[1] as num).toDouble();
+              }
+            } catch (_) {}
+          }
+
+          final out = {
+            'name': props?['name'] ?? f['id'] ?? mapboxId,
+            'mapbox_id': props?['mapbox_id'] ?? f['id'] ?? mapboxId,
+            'address': props?['full_address'] ?? props?['address'] ?? null,
+            'lat': lat,
+            'lng': lng,
+            'raw': f,
+          };
+
+          _retrieveCache[mapboxId] = out;
+          return out;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+    return null;
+  }
+
+  Widget _buildSuggestionTile(Map<String, dynamic> s) {
+    final name = (s['name'] ?? '').toString();
+    final address = (s['full_address'] ?? s['place_formatted'] ?? s['address'] ?? '').toString();
+    final type = (s['feature_type'] ?? '').toString();
+    final distance = s['distance'];
+
+    IconData iconData;
+    if (type.contains('poi')) iconData = Icons.local_activity;
+    else if (type.contains('address')) iconData = Icons.home;
+    else iconData = Icons.place;
+
+    return InkWell(
+      onTap: () async {
+        final mapboxId = (s['mapbox_id'] ?? s['mapboxId'] ?? s['id'] ?? '').toString();
+        if (mapboxId.isEmpty) return;
+        setState(() { _loading = true; });
+        final full = await _retrieveFeature(mapboxId);
+        setState(() { _loading = false; });
+        if (full != null && full['lat'] != null && full['lng'] != null) {
+          final nameToSave = full['name'] ?? name;
+          await _saveRecent(nameToSave);
+          if (mounted) Navigator.of(context).pop({ 'lat': full['lat'], 'lng': full['lng'], 'name': nameToSave, 'mapbox_id': full['mapbox_id'], 'raw': full['raw'] });
+        } else {
+          await _saveRecent(name);
+          if (mounted) Navigator.of(context).pop({ 'name': name, 'mapbox_id': mapboxId, 'raw_suggestion': s });
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.grey[850],
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 8, offset: Offset(0,4))],
         ),
-        ..._recentSearches.map((s) {
-          return ListTile(
-            leading: const Icon(Icons.history),
-            title: Text(s),
-            onTap: () async {
-              _ctrl.text = s;
-              await _fetchSuggestions(s);
-            },
-            trailing: IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: () async {
-                final prefs = await SharedPreferences.getInstance();
-                setState(() {
-                  _recentSearches.remove(s);
-                  prefs.setStringList('recent_searches', _recentSearches);
-                });
-              },
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: Colors.grey[800],
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(iconData, color: Colors.white70),
             ),
-          );
-        }).toList()
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  if (address.isNotEmpty) SizedBox(height: 6),
+                  if (address.isNotEmpty)
+                    Text(address, style: TextStyle(color: Colors.white70, fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+            if (distance != null) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.grey[800],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text('${(distance/1000).toStringAsFixed(1)} km', style: TextStyle(color: Colors.white70, fontSize: 12)),
+              )
+            ]
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRecentList() {
+    return ListView(
+      padding: const EdgeInsets.only(top: 8, bottom: 24),
+      children: [
+        const SizedBox(height: 6),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Ostatnie', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              TextButton(
+                onPressed: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.remove('recent_searches');
+                  setState(() { _recentSearches = []; });
+                },
+                child: Text('Wyczyść', style: TextStyle(color: Colors.blue[300])),
+              )
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        ..._recentSearches.map((s) => ListTile(
+          leading: Icon(Icons.history, color: Colors.white70),
+          title: Text(s, style: TextStyle(color: Colors.white)),
+          onTap: () async {
+            _ctrl.text = s;
+            await _fetchSuggestions(s);
+          },
+          trailing: IconButton(
+            icon: Icon(Icons.close, color: Colors.white24),
+            onPressed: () async {
+              final prefs = await SharedPreferences.getInstance();
+              setState(() { _recentSearches.remove(s); prefs.setStringList('recent_searches', _recentSearches); });
+            },
+          ),
+        ))
       ],
     );
   }
 
-  Widget _buildSuggestion(Map<String,dynamic> it) {
-    return ListTile(
-      leading: const Icon(Icons.place),
-      title: Text(it['name'] ?? ''),
-      subtitle: Text(it['place_name'] ?? ''),
-      onTap: () async {
-        final lat = it['lat'] as double?;
-        final lng = it['lng'] as double?;
-        final name = it['place_name'] as String?;
-        if (lat != null && lng != null) {
-          await _saveSearch(name ?? it['name'] ?? '${lat.toString()},${lng.toString()}');
-          Navigator.of(context).pop({'lat': lat, 'lng': lng, 'name': name ?? it['name']});
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wybrany wynik nie ma współrzędnych')));
-        }
+  Widget _buildSuggestionsList() {
+    if (_suggestions.isEmpty && !_loading) return Center(child: Text('Brak wyników', style: TextStyle(color: Colors.white70)));
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 6, bottom: 24),
+      itemCount: _suggestions.length,
+      itemBuilder: (context, i) {
+        final s = _suggestions[i];
+        return _buildSuggestionTile(s);
       },
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: FractionallySizedBox(
-        heightFactor: 0.85,
+    final heightFrac = widget.heightFraction.clamp(0.2, 0.95);
+    final height = MediaQuery.of(context).size.height * heightFrac;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         child: Material(
+          color: Colors.grey[900],
           child: Column(
             children: [
+              // Drag handle
               Padding(
-                padding: const EdgeInsets.all(12.0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _ctrl,
-                        autofocus: true,
-                        decoration: const InputDecoration(
-                          hintText: 'Wyszukaj miasto, adres lub obiekt (np. Wroclavia)',
-                          border: OutlineInputBorder(),
-                        ),
-                        onChanged: (v) {
-                          _fetchSuggestions(v);
-                        },
-                        onSubmitted: (v) {
-                          _fetchSuggestions(v);
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.of(context).pop(),
-                    )
-                  ],
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Container(
+                  width: 44,
+                  height: 5,
+                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(10)),
                 ),
               ),
-              if (_loading) const LinearProgressIndicator(),
-              if (_statusMessage != null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  child: Text(_statusMessage!, style: const TextStyle(color: Colors.grey)),
-                ),
-              Expanded(
-                child: _suggestions.isNotEmpty
-                    ? ListView.builder(
-                        itemCount: _suggestions.length,
-                        itemBuilder: (c,i) => _buildSuggestion(_suggestions[i]),
-                      )
-                    : SingleChildScrollView(
-                        child: Column(
+
+              // Top search row
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14.0),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: Icon(Icons.arrow_back, color: Colors.white70),
+                    ),
+                    Expanded(
+                      child: Container(
+                        height: 48,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[850],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
                           children: [
-                            _buildRecent(),
-                            if (!_loading)
-                              Padding(
-                                padding: const EdgeInsets.all(24.0),
-                                child: Column(
-                                  children: const [
-                                    Icon(Icons.search, size: 48, color: Colors.grey),
-                                    SizedBox(height: 12),
-                                    Text('Brak sugestii', style: TextStyle(color: Colors.grey)),
-                                  ],
+                            Icon(Icons.search, color: Colors.white54),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: _ctrl,
+                                focusNode: _focus,
+                                style: TextStyle(color: Colors.white),
+                                cursorColor: Colors.blue[300],
+                                textInputAction: TextInputAction.search,
+                                decoration: InputDecoration(
+                                  hintText: 'Szukaj miejsca...',
+                                  hintStyle: TextStyle(color: Colors.white38),
+                                  border: InputBorder.none,
+                                  isCollapsed: true,
                                 ),
+                                onSubmitted: (v) async {
+                                  await _fetchSuggestions(v.trim());
+                                  if (_suggestions.isNotEmpty) {
+                                    final mapboxId = (_suggestions.first['mapbox_id'] ?? '').toString();
+                                    if (mapboxId.isNotEmpty) {
+                                      final full = await _retrieveFeature(mapboxId);
+                                      if (full != null && full['lat'] != null && full['lng'] != null) {
+                                        await _saveRecent(full['name'] ?? v.trim());
+                                        if (mounted) Navigator.of(context).pop({'lat': full['lat'], 'lng': full['lng'], 'name': full['name']});
+                                      }
+                                    }
+                                  }
+                                },
+                              ),
+                            ),
+                            if (_ctrl.text.isNotEmpty)
+                              IconButton(
+                                icon: Icon(Icons.close, color: Colors.white54),
+                                onPressed: () { _ctrl.clear(); setState(() { _suggestions = []; }); },
                               )
                           ],
                         ),
                       ),
+                    ),
+                    const SizedBox(width: 10),
+                    IconButton(
+                      onPressed: () { _ctrl.clear(); setState(() { _suggestions = []; }); },
+                      icon: Icon(Icons.mic, color: Colors.white54),
+                    )
+                  ],
+                ),
+              ),
+
+              if (_loading) LinearProgressIndicator(minHeight: 2, color: Colors.blue[300]),
+
+              // content
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: _ctrl.text.isEmpty ? _buildRecentList() : _buildSuggestionsList(),
+                ),
               ),
             ],
           ),

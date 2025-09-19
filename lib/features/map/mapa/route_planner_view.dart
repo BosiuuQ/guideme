@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:guide_me/mapbox_shim.dart' as mb;
+import 'active_navigation_view.dart';
 
 class RoutePlannerView extends StatefulWidget {
   final mb.LatLng origin;
@@ -149,11 +150,19 @@ class _RoutePlannerViewState extends State<RoutePlannerView> {
                             ],
                           ),
                           ElevatedButton.icon(
-                              onPressed: () {
-                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Start - tryb nawigacji (stub)')));
-                              },
-                              icon: const Icon(Icons.play_arrow),
-                              label: const Text('Rozpocznij'))
+                            onPressed: () {
+                              Navigator.push(context, MaterialPageRoute(builder: (_) => ActiveNavigationView(
+                                origin: widget.origin,
+                                destination: widget.destination,
+                                title: widget.title,
+                                routeCoords: _coords,
+                                durationSeconds: _durationSeconds ?? 0.0,
+                              )));
+                            },
+                            icon: const Icon(Icons.play_arrow),
+                            label: const Text('Rozpocznij'),
+                          )
+
                         ],
                       ),
                     ),

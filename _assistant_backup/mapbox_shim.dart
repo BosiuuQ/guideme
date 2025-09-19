@@ -52,22 +52,6 @@ class SymbolOptions {
   const SymbolOptions({required this.geometry, this.iconImage, this.iconSize, this.zIndex, this.iconRotate, this.data});
 }
 
-
-class Line {
-  final String id;
-  List<LatLng> geometry;
-  String? lineColor; // hex string like '#rrggbb' or null
-  double lineWidth;
-  Line(this.id, {required this.geometry, this.lineColor, this.lineWidth = 4.0});
-}
-
-class LineOptions {
-  final List<LatLng> geometry;
-  final String? lineColor;
-  final double? lineWidth;
-  const LineOptions({required this.geometry, this.lineColor, this.lineWidth});
-}
-
 // Minimal Controller that supports addSymbol/updateSymbol and camera operations
 class MapboxMapController {
   LatLng center;
@@ -77,32 +61,6 @@ class MapboxMapController {
   double bearing = 0.0;
   int _symbolIdCounter = 0;
   final Map<String, Symbol> _symbols = {};
-
-  final Map<String, Line> _lines = {};
-  int _lineIdCounter = 0;
-
-  Future<Line> addLine(LineOptions options) async {
-    _lineIdCounter += 1;
-    final id = 'line_\${_lineIdCounter}';
-    final line = Line(id, geometry: options.geometry, lineColor: options.lineColor, lineWidth: options.lineWidth ?? 4.0);
-    _lines[id] = line;
-    _notify?.call();
-    return line;
-  }
-
-  Future<void> updateLine(Line line, LineOptions options) async {
-    line.geometry = options.geometry;
-    line.lineColor = options.lineColor;
-    line.lineWidth = options.lineWidth ?? line.lineWidth;
-    _notify?.call();
-    return;
-  }
-
-  Future<void> removeLine(Line line) async {
-    _lines.remove(line.id);
-    _notify?.call();
-  }
-
   MapboxMapController(this.center);
 
   /// Attach flutter_map's MapController and a notify callback from the widget state
@@ -314,22 +272,6 @@ class _MapboxMapState extends State<MapboxMap> {
       );
     }).toList();
 
-    Color _hexToColor(String hex) {
-      hex = hex.replaceAll('#', '');
-      if (hex.length == 6) {
-        hex = 'FF$hex'; // dodaj alpha jeśli brak
-      }
-      return Color(int.parse(hex, radix: 16));
-    }
-
-    final List<fm.Polyline> polylines = _controller._lines.values.map((l) {
-      return fm.Polyline(
-        points: l.geometry.map((p) => ll.LatLng(p.latitude, p.longitude)).toList(),
-        strokeWidth: l.lineWidth,
-        color: l.lineColor != null ? _hexToColor(l.lineColor!) : Color(0xFF3B82F6),
-      );
-    }).toList();
-
     return SizedBox(
       height: MediaQuery.of(context).size.height,
       width: double.infinity,
@@ -366,7 +308,6 @@ class _MapboxMapState extends State<MapboxMap> {
           fm.MarkerLayer(
             markers: markers,
           ),
-          if (polylines.isNotEmpty) fm.PolylineLayer(polylines: polylines),
         ],
       ),
     );

@@ -70,7 +70,7 @@ class _RoutePlannerViewState extends State<RoutePlannerView> {
     }
   }
 
-  Future<void> _fitMapToRoute() async {
+  void _fitMapToRoute() {
     if (_controller == null || _coords.isEmpty) return;
     try {
       double minLat = _coords.first[0], maxLat = _coords.first[0];
@@ -95,32 +95,11 @@ class _RoutePlannerViewState extends State<RoutePlannerView> {
       _controller!.moveCameraImmediate(mb.LatLng(centerLat, centerLng), zoom);
 
       try {
-        _controller!.addSymbol(mb.SymbolOptions(
-          geometry: widget.origin,
-          data: {'type': 'origin'},
-        ));
-        _controller!.addSymbol(mb.SymbolOptions(
-          geometry: widget.destination,
-          data: {'type': 'destination'},
-        ));
-
-        // ➕ tu poprawka: async/await działa prawidłowo
-        final lineCoords = _coords.map((c) => mb.LatLng(c[0], c[1])).toList();
-        await _controller!.addLine(
-          mb.LineOptions(
-            geometry: lineCoords,
-            lineColor: '#3B82F6',
-            lineWidth: 6.0,
-          ),
-        );
-      } catch (e) {
-        debugPrint('Error while adding symbols/line: $e');
-      }
-    } catch (e) {
-      debugPrint('Error in _fitMapToRoute: $e');
-    }
+        _controller!.addSymbol(mb.SymbolOptions(geometry: widget.origin, data: {'type': 'origin'}));
+        _controller!.addSymbol(mb.SymbolOptions(geometry: widget.destination, data: {'type': 'destination'}));
+      } catch (e) {}
+    } catch (e) {}
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -160,30 +139,16 @@ class _RoutePlannerViewState extends State<RoutePlannerView> {
                     Expanded(
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Stack(
-                          children: [
-                            mb.MapboxMap(
-                              accessToken: _mapboxToken,
-                              initialCameraPosition: mb.CameraPosition(target: widget.origin, zoom: 14.0),
-                              onMapCreated: (c) {
-                                _controller = c;
-                                _fitMapToRoute();
-                                // Try to add route as line via controller if available
-                                try {
-                                  // many shims expose addLine or addPolyline; attempt common variants
-                                  final coordsForController = _coords.map((c) => mb.LatLng(c[0], c[1])).toList();
-                                  /* native addLine removed */
-                                  /* native addPolyline removed */
-                                } catch (e) {}
-                              },
-                              myLocationEnabled: false,
-                              trackCameraPosition: false,
-                              onStyleLoadedCallback: () {},
-                            ),
-                            // overlay a quick static preview of the route while the map style loads or if adding native line fails
-                            // route overlay removed - using native polylines
-          
-                          ],
+                        child: mb.MapboxMap(
+                          accessToken: _mapboxToken,
+                          initialCameraPosition: mb.CameraPosition(target: widget.origin, zoom: 14.0),
+                          onMapCreated: (c) {
+                            _controller = c;
+                            _fitMapToRoute();
+                          },
+                          myLocationEnabled: false,
+                          trackCameraPosition: false,
+                          onStyleLoadedCallback: () {},
                         ),
                       ),
                     ),
@@ -215,74 +180,5 @@ class _RoutePlannerViewState extends State<RoutePlannerView> {
     final mins = (s/60).round();
     if (mins >= 60) return '${(mins/60).floor()}h ${mins%60}m';
     return '${mins} min';
-  }
-}
-
-
-/// Overlay painter which paints a scaled route over the map widget's area.
-/// This is a static overlay (doesn't track map panning/zoom), but gives immediate visual feedback.
-class RoutePainterOverlay extends StatelessWidget {
-  final List<List<double>> coords;
-  const RoutePainterOverlay({required this.coords, super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _RoutePainter(coords: coords),
-      child: Container(),
-    );
-  }
-}
-
-class _RoutePainter extends CustomPainter {
-  final List<List<double>> coords;
-  _RoutePainter({required this.coords});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (coords.isEmpty) return;
-    double minLat = coords.first[0], maxLat = coords.first[0];
-    double minLng = coords.first[1], maxLng = coords.first[1];
-    for (final c in coords) {
-      final lat = c[0], lng = c[1];
-      if (lat < minLat) minLat = lat;
-      if (lat > maxLat) maxLat = lat;
-      if (lng < minLng) minLng = lng;
-      if (lng > maxLng) maxLng = lng;
-    }
-    final latRange = (maxLat - minLat) != 0 ? (maxLat - minLat) : 0.0001;
-    final lngRange = (maxLng - minLng) != 0 ? (maxLng - minLng) : 0.0001;
-    final pad = 12.0;
-    final scaleX = (size.width - pad*2) / lngRange;
-    final scaleY = (size.height - pad*2) / latRange;
-    final scale = scaleX < scaleY ? scaleX : scaleY;
-    final offsetX = (size.width - ((lngRange)*scale))/2;
-    final offsetY = (size.height - ((latRange)*scale))/2;
-    final paintLine = Paint()..style = PaintingStyle.stroke..strokeWidth = 4.0..color = Color(0xFF3B82F6).withOpacity(0.9);
-    final paintOrigin = Paint()..style = PaintingStyle.fill..color = Color(0xFF10B981);
-    final paintDest = Paint()..style = PaintingStyle.fill..color = Color(0xFFEF4444);
-
-    Path path = Path();
-    for (var i=0;i<coords.length;i++) {
-      final lat = coords[i][0];
-      final lng = coords[i][1];
-      final x = offsetX + ((lng - minLng) * scale);
-      final y = offsetY + ((maxLat - lat) * scale);
-      if (i==0) path.moveTo(x,y); else path.lineTo(x,y);
-    }
-    canvas.drawPath(path, paintLine);
-    final o = coords.first;
-    final ox = offsetX + ((o[1] - minLng) * scale);
-    final oy = offsetY + ((maxLat - o[0]) * scale);
-    canvas.drawCircle(Offset(ox,oy), 6, paintOrigin);
-    final d = coords.last;
-    final dx = offsetX + ((d[1] - minLng) * scale);
-    final dy = offsetY + ((maxLat - d[0]) * scale);
-    canvas.drawCircle(Offset(dx,dy), 6, paintDest);
-  }
-
-  @override
-  bool shouldRepaint(covariant _RoutePainter oldDelegate) {
-    return oldDelegate.coords != coords;
   }
 }

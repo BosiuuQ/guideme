@@ -11,9 +11,15 @@ class LatLng {
   final double latitude;
   final double longitude;
   const LatLng(this.latitude, this.longitude);
+
+  // kompatybilność z kodem używającym .lat/.lng
+  double get lat => latitude;
+  double get lng => longitude;
+
   @override
   String toString() => 'LatLng($latitude, $longitude)';
 }
+
 
 // CameraPosition similar API
 class CameraPosition {

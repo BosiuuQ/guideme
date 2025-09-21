@@ -11,8 +11,7 @@ class LatLng extends mb.LatLng {
 }
 
 class CameraPosition extends mb.CameraPosition {
-  CameraPosition({required LatLng target, double zoom = 0, double bearing = 0, double tilt = 0})
-      : super(target: target, zoom: zoom, bearing: bearing, tilt: tilt);
+  CameraPosition({required LatLng target, double zoom = 0, double bearing = 0, double tilt = 0}) : super(target: target, zoom: zoom, bearing: bearing, tilt: tilt);
 }
 
 class MarkerId {

@@ -23,13 +23,13 @@ class _ViewpointViewState extends State<ViewpointView> {
     for (var v in _viewpoints) {
       final LatLng p = v['pos'] as LatLng;
       try {
-        _controller?.addSymbol(SymbolOptions(geometry: p, iconImage: 'marker-15', iconSize: 1.2, data: {'title': v['title']}));
+        _controller?.addSymbol(SymbolOptions(geometry: p, iconImage: 'assets/icons/marker.png',  ));
       } catch (e) {}
     }
   }
 
   void _goTo(LatLng pos) {
-    _controller?.animateCamera(CameraPosition(target: pos, zoom: 16.0));
+    _controller?.moveCamera(pos, zoom: 16.0);
   }
 
   @override

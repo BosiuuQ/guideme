@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:guide_me/mapbox_shim.dart' as mb;
-import 'package:guide_me/mapbox_shim.dart';
-import 'package:guide_me/mapbox_shim.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:guide_me/features/spoty/spot_add_view.dart';
 import 'package:guide_me/features/spoty/spoty_backend.dart';
 import 'package:guide_me/features/spoty/spot_detail_view.dart';
-import 'package:flutter/scheduler.dart';
 
 
 class SpotyView extends StatefulWidget {
@@ -19,12 +16,12 @@ class SpotyView extends StatefulWidget {
 
 class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMixin {
   LatLng? _currentLatLng;
-  mb.MapboxMapController? _mapController;
+  GoogleMapController? _mapController;
   TabController? _tabController;
 
   List<Map<String, dynamic>> officialSpots = [];
   List<Map<String, dynamic>> communitySpots = [];
-  Set<String> _markerIds = {};
+  Set<Marker> _markers = {};
   Map<String, dynamic>? _selectedSpot;
 
   @override
@@ -69,10 +66,21 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
   }
 
   void _createMarkers(List<Map<String, dynamic>> spots) {
-    // Simple marker id set for compatibility with mapbox shim.
-    final newMarkerIds = spots.map((spot) => (spot['id'] ?? '').toString()).toSet();
+    final newMarkers = spots.map((spot) {
+      return Marker(
+        markerId: MarkerId(spot['id']),
+        position: LatLng(spot['lat'], spot['lng']),
+        icon: BitmapDescriptor.defaultMarker,
+        onTap: () {
+          setState(() {
+            _selectedSpot = spot;
+          });
+        },
+      );
+    }).toSet();
+
     setState(() {
-      _markerIds = newMarkerIds;
+      _markers = newMarkers;
     });
   }
 
@@ -119,7 +127,29 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
                   height: 260,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: Container(height:200, color: Colors.grey),
+                    child: GoogleMap(
+                      initialCameraPosition: CameraPosition(
+                        target: _currentLatLng!,
+                        zoom: 13,
+                      ),
+                      onMapCreated: (controller) {
+                        _mapController = controller;
+                        controller.setMapStyle('''
+                          [
+                            {
+                              "featureType": "poi",
+                              "elementType": "all",
+                              "stylers": [{"visibility": "off"}]
+                            }
+                          ]
+                        ''');
+                      },
+                      myLocationEnabled: true,
+                      myLocationButtonEnabled: false,
+                      mapToolbarEnabled: false,
+                      zoomControlsEnabled: false,
+                      markers: _markers,
+                    ),
                   ),
                 ),
               ),

@@ -1,228 +1,174 @@
-// mapbox_shim.dart - expanded shim to satisfy mapbox_gl API usage in project
-import 'package:flutter/material.dart';
+// mapbox_shim.dart - lightweight shim that wraps mapbox_maps_flutter
+// Provides a small subset of the API used by the project (LatLng, CameraPosition,
+// MapboxMap widget and a MapboxMapController with simple symbol and camera helpers).
+//
+// NOTE: This is not a complete drop-in replacement for the previous shim; it aims
+// to cover the calls used across the app (addSymbol, updateSymbolImmediate,
+// moveCameraImmediate, basic line support). You may need to expand it for full parity.
+
 import 'dart:typed_data';
-import 'package:flutter_map/flutter_map.dart' as fm;
-import 'package:latlong2/latlong.dart' as ll;
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as native;
 
-
-
-// Basic LatLng compatible with mapbox_gl usage
+/// Simple LatLng struct used throughout the app.
 class LatLng {
   final double latitude;
   final double longitude;
   const LatLng(this.latitude, this.longitude);
-
-  // kompatybilność z kodem używającym .lat/.lng
-  double get lat => latitude;
-  double get lng => longitude;
-
   @override
   String toString() => 'LatLng($latitude, $longitude)';
 }
 
-
-// CameraPosition similar API
+/// CameraPosition equivalent used by the app.
 class CameraPosition {
   final LatLng target;
   final double zoom;
   final double bearing;
-  final double tilt;
-  const CameraPosition({required this.target, this.zoom = 19, this.bearing = 0.0, this.tilt = 0.0});
+  final double tilt; // kept for compatibility
+  const CameraPosition({required this.target, required this.zoom, this.bearing = 0.0, this.tilt = 0.0});
 }
 
-// CameraUpdate placeholder (compat) - holds either a CameraPosition or a LatLng
-class CameraUpdate {
-  final CameraPosition? position;
-  final LatLng? latLng;
-  CameraUpdate._({this.position, this.latLng});
-  static CameraUpdate newCameraPosition(CameraPosition p) => CameraUpdate._(position: p);
-  static CameraUpdate newLatLng(LatLng p) => CameraUpdate._(latLng: p);
-  static CameraUpdate newLatLngBounds(dynamic b, double padding) => CameraUpdate._();
-}
-
-// SymbolOptions and Symbol simple implementations
-class Symbol {
-  final String id;
-  LatLng? geometry;
-  Map<String, dynamic> data = {};
-  Symbol(this.id, {this.geometry});
-}
-
+/// SymbolOptions and Symbol models (very small subset).
 class SymbolOptions {
   final LatLng geometry;
-  final String? iconImage;
-  final double? iconSize;
-  final double? zIndex;
-  final double? iconRotate;
-  final Map<String,dynamic>? data;
-  const SymbolOptions({required this.geometry, this.iconImage, this.iconSize, this.zIndex, this.iconRotate, this.data});
+  final String? iconImage; // asset path to an image
+  final double? rotation;
+  const SymbolOptions({required this.geometry, this.iconImage, this.rotation});
 }
 
-
-class Line {
+class Symbol {
   final String id;
-  List<LatLng> geometry;
-  String? lineColor; // hex string like '#rrggbb' or null
-  double lineWidth;
-  Line(this.id, {required this.geometry, this.lineColor, this.lineWidth = 4.0});
+  LatLng geometry;
+  Symbol(this.id, this.geometry);
 }
 
+/// LineOptions / Line model (minimal)
 class LineOptions {
   final List<LatLng> geometry;
-  final String? lineColor;
   final double? lineWidth;
-  const LineOptions({required this.geometry, this.lineColor, this.lineWidth});
+  final String? lineColor;
+  LineOptions({required this.geometry, this.lineWidth, this.lineColor});
+}
+class Line {
+  final String id;
+  final List<LatLng> geometry;
+  final double? lineWidth;
+  final String? lineColor;
+  Line({required this.id, required this.geometry, this.lineWidth, this.lineColor});
 }
 
-// Minimal Controller that supports addSymbol/updateSymbol and camera operations
+/// MapboxMapController - wraps native MapboxMap and basic annotation managers.
 class MapboxMapController {
-  LatLng center;
-  fm.MapController? _fmController;
-  VoidCallback? _notify;
-  double _lastZoom = 23.0;
-  double bearing = 0.0;
-  int _symbolIdCounter = 0;
+  final native.MapboxMap _mapboxMap;
+  native.PointAnnotationManager? _pointManager;
+  native.PolylineAnnotationManager? _lineManager;
+  int _symbolCounter = 0;
+  int _lineCounter = 0;
+
+  // local cache of symbols/lines
   final Map<String, Symbol> _symbols = {};
-
   final Map<String, Line> _lines = {};
-  int _lineIdCounter = 0;
 
-  Future<Line> addLine(LineOptions options) async {
-    _lineIdCounter += 1;
-    final id = 'line_\${_lineIdCounter}';
-    final line = Line(id, geometry: options.geometry, lineColor: options.lineColor, lineWidth: options.lineWidth ?? 4.0);
-    _lines[id] = line;
-    _notify?.call();
-    return line;
-  }
+  // basic camera state cached for compatibility
+  double _bearing = 0.0;
+  double _tilt = 0.0;
+  double get bearing => _bearing;
+  double get tilt => _tilt;
 
-  Future<void> updateLine(Line line, LineOptions options) async {
-    line.geometry = options.geometry;
-    line.lineColor = options.lineColor;
-    line.lineWidth = options.lineWidth ?? line.lineWidth;
-    _notify?.call();
-    return;
-  }
+  MapboxMapController(this._mapboxMap);
 
-  Future<void> removeLine(Line line) async {
-    _lines.remove(line.id);
-    _notify?.call();
-  }
-
-  MapboxMapController(this.center);
-
-  /// Attach flutter_map's MapController and a notify callback from the widget state
-  void attachFlutterMapController(fm.MapController controller, VoidCallback notify) {
-    _fmController = controller;
-    _notify = notify;
-  }
-
-  /// Immediately move camera to target (no interpolation) and notify.
-  void moveCameraImmediate(LatLng target, double zoom) {
-    center = target;
-    _lastZoom = zoom;
+  /// Call after map creation to initialize annotation managers.
+  Future<void> initManagers() async {
     try {
-      _fmController?.move(ll.LatLng(target.latitude, target.longitude), zoom);
-    } catch (e) {}
-    _notify?.call();
-  }
-
-
-  Future<void> animateCamera(dynamic update) async {
-    // Determine target center and optional zoom
-    LatLng? target;
-    double? zoom;
-    if (update is CameraPosition) {
-      target = update.target;
-      zoom = update.zoom;
-    } else if (update is CameraUpdate) {
-      if (update.position != null) {
-        target = update.position!.target;
-        zoom = update.position!.zoom;
-      } else if (update.latLng != null) {
-        target = update.latLng;
-      }
-    }
-    if (target == null) return;
-
-    // If flutter_map controller attached, perform a smooth interpolation using small steps.
-    if (_fmController != null) {
-      try {
-        // current center in controller
-        final fromLat = center.latitude;
-        final fromLon = center.longitude;
-        final toLat = target.latitude;
-        final toLon = target.longitude;
-
-        // animation duration and steps
-        const int ms = 400;
-        const int steps = 20;
-        final stepMs = ms ~/ steps;
-        for (int i = 1; i <= steps; i++) {
-          final t = i / steps;
-          final curLat = fromLat + (toLat - fromLat) * t;
-          final curLon = fromLon + (toLon - fromLon) * t;
-          center = LatLng(curLat, curLon);
-          try {
-            _fmController!.move(ll.LatLng(curLat, curLon), zoom ?? _lastZoom);
-          } catch (e) {
-            // fallback: still update center
-          }
-          // notify widget to rebuild markers if needed
-          _notify?.call();
-          await Future.delayed(Duration(milliseconds: stepMs));
-        }
-      } catch (e) {
-        // on any error, fallback to immediate set
-        center = target;
-        try { _fmController!.move(ll.LatLng(target.latitude, target.longitude), zoom ?? _lastZoom); } catch (e) {}
-        _notify?.call();
-      }
-    } else {
-      // no flutter_map controller attached: just set center
-      center = target;
-    }
+      _pointManager = await _mapboxMap.annotations.createPointAnnotationManager();
+    } catch (_) {}
+    try {
+      _lineManager = await _mapboxMap.annotations.createPolylineAnnotationManager();
+    } catch (_) {}
+    // Do not attempt to call non-existent getCamera() method here; leave camera state at defaults.
   }
 
   Future<Symbol> addSymbol(SymbolOptions options) async {
-    _symbolIdCounter += 1;
-    final id = 'sym_${_symbolIdCounter}';
-    final sym = Symbol(id, geometry: options.geometry);
-    if (options.data != null) sym.data.addAll(options.data!);
+    _symbolCounter += 1;
+    final id = 'sym_$_symbolCounter';
+    // create PointAnnotationOptions
+    try {
+      Uint8List? imageBytes;
+      if (options.iconImage != null) {
+        final bd = await rootBundle.load(options.iconImage!);
+        imageBytes = bd.buffer.asUint8List();
+      }
+      final nativeOptions = native.PointAnnotationOptions(
+        geometry: native.Point(coordinates: native.Position(options.geometry.longitude, options.geometry.latitude)),
+        image: imageBytes,
+        // iconSize: options.rotation != null ? 1.0 : null,
+      );
+      final created = await _pointManager?.create(nativeOptions);
+      // created may contain an id; we still return our local Symbol
+    } catch (e) {
+      // fallback: ignore native creation issues
+    }
+    final sym = Symbol(id, options.geometry);
     _symbols[id] = sym;
-    _notify?.call();
     return sym;
   }
 
-  Future<void> updateSymbol(Symbol symbol, SymbolOptions options) async {
-    symbol.geometry = options.geometry;
-    if (options.data != null) symbol.data.addAll(options.data!);
-    _notify?.call();
-    return;
+  Future<void> updateSymbolImmediate(Symbol symbol, LatLng newPos) async {
+    // Update native annotation if possible; if not, update local cache.
+    try {
+      // naive approach: delete & recreate native annotation matching geometry
+      // (no mapping between native id and our id is kept here)
+      await _pointManager?.deleteAll();
+      // recreate all symbols with updated positions
+      for (final s in _symbols.entries) {
+        final pos = s.value.geometry;
+        final nativeOptions = native.PointAnnotationOptions(
+          geometry: native.Point(coordinates: native.Position(pos.longitude, pos.latitude)),
+        );
+        await _pointManager?.create(nativeOptions);
+      }
+    } catch (_) {}
+    symbol.geometry = newPos;
+    _symbols[symbol.id] = symbol;
   }
 
-  /// Synchronous immediate update for interpolation loops (avoids async/await overhead)
-  void updateSymbolImmediate(Symbol symbol, LatLng geometry) {
-    symbol.geometry = geometry;
-    _notify?.call();
+  Future<void> moveCameraImmediate(LatLng target, double zoom) async {
+    try {
+      final cam = native.CameraOptions(center: native.Point(coordinates: native.Position(target.longitude, target.latitude)), zoom: zoom);
+      await _mapboxMap.setCamera(cam);
+      try { _bearing = cam.bearing ?? _bearing; } catch(_) {}
+      try { _tilt = cam.pitch ?? _tilt; } catch(_) {}
+    } catch (_) {}
   }
 
-  // placeholder for removeSymbol
-  Future<void> removeSymbol(Symbol symbol) async {
-    _symbols.remove(symbol.id);
-    return;
+  /// Smooth move with optional duration in milliseconds
+  Future<void> moveCamera(LatLng target, {double? zoom, int ms = 300}) async {
+    try {
+      final cam = native.CameraOptions(center: native.Point(coordinates: native.Position(target.longitude, target.latitude)), zoom: zoom);
+      await _mapboxMap.flyTo(cam, native.MapAnimationOptions(duration: ms));
+      try { _bearing = cam.bearing ?? _bearing; } catch(_) {}
+      try { _tilt = cam.pitch ?? _tilt; } catch(_) {}
+    } catch (_) {}
+  }
+
+  Future<Line> addLine(LineOptions options) async {
+    _lineCounter += 1;
+    final id = 'line_$_lineCounter';
+    final line = Line(id: id, geometry: options.geometry, lineWidth: options.lineWidth, lineColor: options.lineColor);
+    _lines[id] = line;
+    // try to create polyline on native map (best-effort)
+    try {
+      final pts = options.geometry.map((p) => native.Position(p.longitude, p.latitude)).toList();
+      final lineString = native.LineString(coordinates: pts);
+      final polylineOptions = native.PolylineAnnotationOptions(geometry: lineString);
+      await _lineManager?.create(polylineOptions);
+    } catch (_) {}
+    return line;
   }
 }
 
-typedef MapCreatedCallback = void Function(MapboxMapController controller);
-typedef MapTapCallback = void Function(LatLng position);
-typedef StyleLoadedCallback = void Function();
-
-// MapboxMap widget - accepts many named parameters used elsewhere in project.
-
-
-
-
+/// MapboxMap widget - wraps native MapWidget and exposes a simpler API.
 class MapboxMap extends StatefulWidget {
   final CameraPosition initialCameraPosition;
   final String? accessToken;
@@ -235,6 +181,9 @@ class MapboxMap extends StatefulWidget {
   final bool scrollGesturesEnabled;
   final bool rotateGesturesEnabled;
   final bool tiltGesturesEnabled;
+  final String? styleString;
+  final String? styleUri;
+
   const MapboxMap({
     Key? key,
     required this.initialCameraPosition,
@@ -248,6 +197,8 @@ class MapboxMap extends StatefulWidget {
     this.scrollGesturesEnabled = true,
     this.rotateGesturesEnabled = true,
     this.tiltGesturesEnabled = true,
+    this.styleString,
+    this.styleUri,
   }) : super(key: key);
 
   @override
@@ -255,150 +206,51 @@ class MapboxMap extends StatefulWidget {
 }
 
 class _MapboxMapState extends State<MapboxMap> {
-  late MapboxMapController _controller;
-  late fm.MapController _fmController;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = MapboxMapController(widget.initialCameraPosition.target);
-    _fmController = fm.MapController();
-    // attach flutter_map controller and a small notify to rebuild when symbols/center update
-    _controller._lastZoom = widget.initialCameraPosition.zoom; _controller.attachFlutterMapController(_fmController, () { setState(() {}); });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      widget.onMapCreated?.call(_controller);
-      widget.onStyleLoadedCallback?.call();
-    });
-  }
+  MapboxMapController? _controller;
+  native.MapboxMap? _nativeMap;
 
   @override
   Widget build(BuildContext context) {
-    final LatLng c = widget.initialCameraPosition.target;
-    final double z = widget.initialCameraPosition.zoom;
-    final token = (widget.accessToken ?? '').trim();
-
-    final String urlTemplate;
-    if (token.isEmpty) {
-      urlTemplate = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-    } else {
-      urlTemplate = 'https://api.mapbox.com/styles/v1/bosiuuq/cly3nq2tw007t01pm4256097c/tiles/{z}/{x}/{y}@2x?access_token=${token}';
+    final tok = (widget.accessToken ?? '').trim();
+    if (tok.isNotEmpty) {
+      // set access token globally if available
+      try {
+        native.MapboxOptions.setAccessToken(tok);
+      } catch (_) {}
     }
-
-    // Build marker list from controller symbols (use geometry if present)
-    final List<fm.Marker> markers = _controller._symbols.values.where((s) => s.geometry != null).map((s) {
-      final lat = s.geometry!.latitude;
-      final lon = s.geometry!.longitude;
-      return fm.Marker(
-        point: ll.LatLng(lat, lon),
-        width: 40,
-        height: 40,
-        // Use a simple Icon for markers; if you have custom icon bytes in s.data, you can extend this.
-        child: GestureDetector(
-          onTap: () {
-            // If symbol has callback stored in data, try to call it (best-effort)
-            try {
-              final cb = s.data['onTap'];
-              if (cb is Function) cb();
-            } catch (e) {}
-          },
-          child: Container(
-            alignment: Alignment.center,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16.0),
-              child: Builder(builder: (ctx) {
-                try {
-                  final asset = s.data['asset'];
-                  if (asset is String && asset.isNotEmpty) {
-                    return Image.asset(asset, width: 36, height: 36, fit: BoxFit.contain);
-                  }
-                } catch (e) {}
-                return const Icon(Icons.location_on);
-              }),
-            ),
-          ),
-        ),
-      );
-    }).toList();
-
-    Color _hexToColor(String hex) {
-      hex = hex.replaceAll('#', '');
-      if (hex.length == 6) {
-        hex = 'FF$hex'; // dodaj alpha jeśli brak
-      }
-      return Color(int.parse(hex, radix: 16));
-    }
-
-    final List<fm.Polyline> polylines = _controller._lines.values.map((l) {
-      return fm.Polyline(
-        points: l.geometry.map((p) => ll.LatLng(p.latitude, p.longitude)).toList(),
-        strokeWidth: l.lineWidth,
-        color: l.lineColor != null ? _hexToColor(l.lineColor!) : Color(0xFF3B82F6),
-      );
-    }).toList();
-
-    return SizedBox(
-      height: MediaQuery.of(context).size.height,
-      width: double.infinity,
-      child: fm.FlutterMap(
-        mapController: _fmController,
-        options: fm.MapOptions(
-          initialCenter: ll.LatLng(c.latitude, c.longitude),
-          initialZoom: z,
-          // interaction options left default
-          onTap: (tapPosition, point) {
-            if (widget.onTap != null) widget.onTap!(LatLng(point.latitude, point.longitude));
-          },
-          onPositionChanged: (pos, hasGesture) {
-            if (widget.trackCameraPosition) {
-              final center = pos.center;
-              if (center != null) {
-                _controller.center = LatLng(center.latitude, center.longitude);
-              }
-              // try to read rotation/angle from pos (flutter_map may provide rotation or angle)
-              try {
-                final rot = (pos as dynamic).rotation ?? (pos as dynamic).angle ?? 0.0;
-                _controller.bearing = (rot is num) ? rot.toDouble() : 0.0;
-              } catch (e) {}
+    final cam = native.CameraOptions(
+      center: native.Point(coordinates: native.Position(widget.initialCameraPosition.target.longitude, widget.initialCameraPosition.target.latitude)),
+      zoom: widget.initialCameraPosition.zoom,
+      bearing: widget.initialCameraPosition.bearing,
+      pitch: widget.initialCameraPosition.tilt,
+    );
+    return native.MapWidget(
+      key: const ValueKey('mapWidget'),
+      cameraOptions: cam,
+      styleUri: widget.styleUri ?? '',
+      onTapListener: (dynamic ctx) {
+        try {
+          final coords = ctx?.point?.coordinates;
+          if (coords != null) {
+            // coords typically have fields 'lat' and 'lng' or 'y' and 'x'
+            double? lat;
+            double? lng;
+            try { lat = coords.lat as double; lng = coords.lng as double; } catch (_) {}
+            try { lat = coords.y as double; lng = coords.x as double; } catch (_) {}
+            if (lat != null && lng != null) {
+              widget.onTap?.call(LatLng(lat, lng));
             }
-          },
-        ),
-        children: [
-          fm.TileLayer(
-            urlTemplate: urlTemplate,
-            subdomains: const ['a', 'b', 'c'],
-            tileProvider: fm.NetworkTileProvider(),
-            userAgentPackageName: 'com.example.guide_me',
-          ),
-          fm.MarkerLayer(
-            markers: markers,
-          ),
-          if (polylines.isNotEmpty) fm.PolylineLayer(polylines: polylines),
-        ],
-      ),
+          }
+        } catch (_) {}
+      },
+      onMapCreated: (native.MapboxMap mapboxMap) async {
+        _nativeMap = mapboxMap;
+        final ctrl = MapboxMapController(mapboxMap);
+        await ctrl.initManagers();
+        _controller = ctrl;
+        widget.onMapCreated?.call(ctrl);
+        widget.onStyleLoadedCallback?.call();
+      },
     );
   }
-}
-
-// Export commonly used names for convenience
-class BitmapDescriptor {
-  final Uint8List? bytes;
-  const BitmapDescriptor._(this.bytes);
-  static const BitmapDescriptor defaultMarker = BitmapDescriptor._(null);
-  static BitmapDescriptor fromBytes(Uint8List b) => BitmapDescriptor._(b);
-}
-
-class MarkerId {
-  final String value;
-  const MarkerId(this.value);
-}
-
-class Marker {
-  final MarkerId markerId;
-  final LatLng position;
-  final BitmapDescriptor icon;
-  final double rotation;
-  final Offset? anchor;
-  final bool flat;
-  final void Function()? onTap;
-  const Marker({required this.markerId, required this.position, this.icon = BitmapDescriptor.defaultMarker, this.rotation = 0, this.anchor, this.flat = false, this.onTap});
 }

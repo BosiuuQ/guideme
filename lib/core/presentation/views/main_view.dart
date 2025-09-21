@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:guide_me/core/constants/app_assets.dart';
 import 'package:guide_me/core/constants/app_colors.dart';
 import 'package:guide_me/core/presentation/widgets/app_drawer_widget.dart';
 import 'package:guide_me/features/map/mapa/main_map_widget.dart';
-import 'package:latlong2/latlong.dart';
 
 class MainView extends StatelessWidget {
   const MainView({super.key});

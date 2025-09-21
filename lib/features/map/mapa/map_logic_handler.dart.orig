@@ -109,7 +109,7 @@ class MapLogicHandler {
       _displayPos = LatLng(pos.latitude, pos.longitude);
       try {
         if (_userSymbol == null && controller != null) {
-          controller!.addSymbol(SymbolOptions(geometry: _displayPos!, iconImage: 'assets/icons/marker.png')).then((sym) {
+          controller!.addSymbol(SymbolOptions(geometry: _displayPos!, data: {'asset': 'assets/icons/marker.png'})).then((sym) {
             _userSymbol = sym;
           }).catchError((e) {});
         } else if (_userSymbol != null && controller != null) {
@@ -229,7 +229,7 @@ class MapLogicHandler {
     _lastGpsTime = null;
     try {
       if (_userSymbol == null && controller != null) {
-        _userSymbol = await controller!.addSymbol(SymbolOptions(geometry: pos, iconImage: 'assets/icons/marker.png'));
+        _userSymbol = await controller!.addSymbol(SymbolOptions(geometry: pos, data: {'asset': 'assets/icons/marker.png'}));
       } else if (_userSymbol != null && controller != null) {
         controller!.updateSymbolImmediate(_userSymbol!, pos);
       }

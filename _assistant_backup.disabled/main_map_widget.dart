@@ -228,8 +228,7 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
   Widget _buildMap() {
     return mb.MapboxMap(
       accessToken: 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg',
-      initialCameraPosition: const mb.CameraPosition(target: mb.LatLng(52.2297, 21.0122), zoom: 19, bearing: 0.0, tilt: 75.0),
-      styleUri: 'mapbox://styles/bosiuuq/cmb9d84f300t001r25irj47nk',
+      initialCameraPosition: const mb.CameraPosition(target: mb.LatLng(52.2297, 21.0122), zoom: 19),
       onMapCreated: (controller) {
         _mapLogic.onMapCreated(controller);
       },

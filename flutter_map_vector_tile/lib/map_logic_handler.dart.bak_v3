@@ -1,0 +1,429 @@
+
+// map_logic_handler.dart (updated v2)
+// Fixes:
+// - precise 1s delay by interpolating a target sample at (now - delayMs).
+// - robust stop detection and deadzone snapping to avoid oscillation when stationary.
+// - tweak smoothing durations for responsiveness.
+
+import 'dart:async';
+import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
+
+class LocationSample {
+  final double latitude;
+  final double longitude;
+  final double accuracy; // meters
+  final double? bearing; // degrees, nullable
+  final DateTime timestamp;
+
+  LocationSample({
+    required this.latitude,
+    required this.longitude,
+    required this.accuracy,
+    this.bearing,
+    DateTime? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now();
+
+  @override
+  String toString() =>
+      'LocationSample($latitude, $longitude, acc:$accuracy, bearing:$bearing, time:$timestamp)';
+}
+
+class AnimatedLocation {
+  final double latitude;
+  final double longitude;
+  final double bearing; // degrees
+  final DateTime timestamp;
+
+  AnimatedLocation({
+    required this.latitude,
+    required this.longitude,
+    required this.bearing,
+    required this.timestamp,
+  });
+
+  @override
+  String toString() =>
+      'AnimatedLocation($latitude,$longitude,bearing:$bearing,time:$timestamp)';
+}
+
+/// Simple utility: linear interpolation between two doubles
+double _lerp(double a, double b, double t) => a + (b - a) * t;
+
+/// Interpolate latitude/longitude taking shortest path on the globe for small distances
+double _interpLat(double a, double b, double t) => _lerp(a, b, t);
+double _interpLng(double a, double b, double t) => _lerp(a, b, t);
+
+/// Normalize bearing to [0,360)
+double _normalizeBearing(double b) {
+  double v = b % 360;
+  if (v < 0) v += 360;
+  return v;
+}
+
+/// Interpolate bearing with shortest rotation direction
+double _interpBearing(double a, double b, double t) {
+  a = _normalizeBearing(a);
+  b = _normalizeBearing(b);
+  double diff = b - a;
+  if (diff.abs() > 180) {
+    if (diff > 0) diff -= 360;
+    else diff += 360;
+  }
+  return _normalizeBearing(a + diff * t);
+}
+
+/// Simple distance (Haversine) for small distances — returns meters
+double haversineDistanceMeters(double lat1, double lon1, double lat2, double lon2) {
+  const R = 6371000.0; // Earth radius in meters
+  final phi1 = lat1 * (math.pi / 180.0);
+  final phi2 = lat2 * (math.pi / 180.0);
+  final dphi = (lat2 - lat1) * (math.pi / 180.0);
+  final dlambda = (lon2 - lon1) * (math.pi / 180.0);
+
+  final a = math.sin(dphi/2) * math.sin(dphi/2) +
+      math.cos(phi1) * math.cos(phi2) *
+      math.sin(dlambda/2) * math.sin(dlambda/2);
+  final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a));
+  return R * c;
+}
+
+/// Compute bearing (degrees) from point A to B
+double computeBearing(double lat1, double lon1, double lat2, double lon2) {
+  final phi1 = lat1 * (math.pi / 180.0);
+  final phi2 = lat2 * (math.pi / 180.0);
+  final lambda1 = lon1 * (math.pi / 180.0);
+  final lambda2 = lon2 * (math.pi / 180.0);
+
+  final y = math.sin(lambda2 - lambda1) * math.cos(phi2);
+  final x = math.cos(phi1)*math.sin(phi2) - math.sin(phi1)*math.cos(phi2)*math.cos(lambda2 - lambda1);
+  final theta = math.atan2(y, x);
+  return (_normalizeBearing(theta * 180.0 / math.pi));
+}
+
+/// Represents a straight polyline route for optional map-matching.
+class RoutePolyline {
+  final List<List<double>> points; // [[lat, lng], ...]
+  RoutePolyline(this.points);
+}
+
+/// Main handler
+class MapLogicHandler {
+  /// how long to delay incoming samples (in milliseconds). For your request: 1000ms.
+  final int delayMs;
+
+  /// smoothing/tick rate (frame rate for animation). Default 60 fps.
+  final int fps;
+
+  /// Optional route for simple map-matching (snapping to nearest segment when within thresholdMeters).
+  final RoutePolyline? route;
+  final double mapMatchThresholdMeters;
+
+  // Stop detection thresholds
+  final double stopSpeedThresholdMs = 0.6; // m/s - below this we consider potential stop
+  final double startSpeedThresholdMs = 1.0; // m/s - need to exceed to consider movement
+  final double stationaryDeadZoneMeters = 1.5; // within this distance we snap and hold
+
+  // Internal buffers
+  final List<LocationSample> _buffer = [];
+
+  // Last known animated state
+  AnimatedLocation? _lastAnimated;
+  LocationSample? _lastTargetSample; // last target sample (delayed)
+  LocationSample? _lastDelayedReturnedSample; // last returned interpolated delayed sample
+
+  // stationary state with simple hysteresis
+  bool _stationary = false;
+
+  // Timer to drive frame-based interpolation
+  Timer? _ticker;
+  bool _running = false;
+
+  // Stream controller for UI
+  final StreamController<AnimatedLocation> _outController =
+      StreamController<AnimatedLocation>.broadcast();
+
+  Stream<AnimatedLocation> get onAnimatedLocation => _outController.stream;
+
+  MapLogicHandler({
+    this.delayMs = 1000,
+    this.fps = 60,
+    this.route,
+    this.mapMatchThresholdMeters = 20.0,
+  });
+
+  /// Call this whenever you get a new raw GPS sample from the system/location stream.
+  void onLocation(LocationSample sample) {
+    // Insert maintaining order (should be mostly in order)
+    _buffer.add(sample);
+    // Keep buffer size limited (e.g., last 30 seconds)
+    final limit = (delayMs * 30 ~/ 1000) + 10;
+    if (_buffer.length > limit) {
+      _buffer.removeAt(0);
+    }
+  }
+
+  /// Start the engine (begins ticker that emits animated positions)
+  void start() {
+    if (_running) return;
+    _running = true;
+    final period = Duration(milliseconds: (1000 / fps).round());
+    _ticker = Timer.periodic(period, (_) => _tick());
+  }
+
+  /// Stop the engine
+  void stop() {
+    _ticker?.cancel();
+    _ticker = null;
+    _running = false;
+  }
+
+  /// Clean up
+  Future<void> dispose() async {
+    stop();
+    await _outController.close();
+  }
+
+  /// Find the "target" sample at exactly (now - delayMs) by interpolating between two buffered samples.
+  /// Returns null if not enough data yet.
+  LocationSample? _findDelayedSampleInterpolated() {
+    if (_buffer.length < 2) return null;
+    final targetTime = DateTime.now().subtract(Duration(milliseconds: delayMs));
+
+    // Ensure buffer is sorted by time
+    _buffer.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    LocationSample? prev;
+    LocationSample? next;
+    for (final s in _buffer) {
+      if (s.timestamp.isBefore(targetTime) || s.timestamp.isAtSameMomentAs(targetTime)) {
+        prev = s;
+      } else {
+        next = s;
+        break;
+      }
+    }
+
+    if (prev == null && next == null) return null;
+    if (prev != null && next == null) {
+      // target is after latest sample -> use latest
+      return prev;
+    }
+    if (prev == null && next != null) {
+      // target before earliest sample -> use earliest
+      return next;
+    }
+
+    // Interpolate fraction between prev and next
+    final totalMs = next!.timestamp.difference(prev!.timestamp).inMilliseconds;
+    if (totalMs <= 0) return prev;
+    final elapsedMs = targetTime.difference(prev.timestamp).inMilliseconds;
+    double frac = elapsedMs / totalMs;
+    if (frac < 0) frac = 0;
+    if (frac > 1) frac = 1;
+
+    final lat = _lerp(prev.latitude, next.latitude, frac);
+    final lng = _lerp(prev.longitude, next.longitude, frac);
+    final acc = _lerp(prev.accuracy, next.accuracy, frac);
+
+    double? bearing;
+    if (prev.bearing != null && next.bearing != null) {
+      bearing = _interpBearing(prev.bearing!, next.bearing!, frac);
+    } else if (prev.bearing != null) {
+      bearing = prev.bearing;
+    } else if (next.bearing != null) {
+      bearing = next.bearing;
+    }
+
+    return LocationSample(
+      latitude: lat,
+      longitude: lng,
+      accuracy: acc,
+      bearing: bearing,
+      timestamp: targetTime,
+    );
+  }
+
+  /// Optionally snap to route polyline (simple perpendicular snap to nearest segment)
+  List<double> _snapToRoute(double lat, double lng) {
+    if (route == null || route!.points.length < 2) return [lat, lng];
+    double bestDist = double.infinity;
+    List<double> bestPoint = [lat, lng];
+    for (int i = 0; i < route!.points.length - 1; i++) {
+      final a = route!.points[i];
+      final b = route!.points[i+1];
+      final snap = _projectPointToSegment(lat, lng, a[0], a[1], b[0], b[1]);
+      final d = haversineDistanceMeters(lat, lng, snap[0], snap[1]);
+      if (d < bestDist) {
+        bestDist = d;
+        bestPoint = snap;
+      }
+    }
+    if (bestDist <= mapMatchThresholdMeters) return bestPoint;
+    return [lat, lng];
+  }
+
+  /// Project point P to segment AB and return projected point lat/lng
+  List<double> _projectPointToSegment(double plat, double plng, double alat, double alng, double blat, double blng) {
+    // Convert to simple Cartesian approx using lat/lng degrees scaled by cos(lat) for lng
+    final avgLat = (alat + blat) / 2.0;
+    final latScale = 111320.0; // meters per degree lat approx
+    final lngScale = 111320.0 * math.cos(avgLat * math.pi / 180.0);
+
+    final ax = (alat) * latScale;
+    final ay = (alng) * lngScale;
+    final bx = (blat) * latScale;
+    final by = (blng) * lngScale;
+    final px = (plat) * latScale;
+    final py = (plng) * lngScale;
+
+    final vx = bx - ax;
+    final vy = by - ay;
+    final wx = px - ax;
+    final wy = py - ay;
+    final vlen2 = vx*vx + vy*vy;
+    if (vlen2 == 0) return [alat, alng];
+    double t = (vx*wx + vy*wy) / vlen2;
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+    final projx = ax + vx * t;
+    final projy = ay + vy * t;
+    final rlat = projx / latScale;
+    final rlng = projy / lngScale;
+    return [rlat, rlng];
+  }
+
+  // Ticker tick: compute target (delayed) sample and interpolate from lastAnimated toward it.
+  void _tick() {
+    final targetSample = _findDelayedSampleInterpolated();
+    if (targetSample == null) {
+      // No delayed sample yet: do nothing
+      return;
+    }
+
+    // Optionally map-match
+    final snapped = _snapToRoute(targetSample.latitude, targetSample.longitude);
+    final targetLat = snapped[0];
+    final targetLng = snapped[1];
+
+    // Determine target bearing: prefer sample bearing, else compute from lastAnimated or previous sample
+    double targetBearing;
+    if (targetSample.bearing != null) {
+      targetBearing = targetSample.bearing!.toDouble();
+    } else if (_lastAnimated != null) {
+      targetBearing = computeBearing(_lastAnimated!.latitude, _lastAnimated!.longitude, targetLat, targetLng);
+    } else if (_lastDelayedReturnedSample != null) {
+      targetBearing = computeBearing(_lastDelayedReturnedSample!.latitude, _lastDelayedReturnedSample!.longitude, targetLat, targetLng);
+    } else {
+      targetBearing = 0.0;
+    }
+
+    // Estimate speed between last delayed returned sample and current target sample
+    double estimatedSpeed = 0.0;
+    if (_lastDelayedReturnedSample != null) {
+      final dist = haversineDistanceMeters(
+        _lastDelayedReturnedSample!.latitude,
+        _lastDelayedReturnedSample!.longitude,
+        targetLat,
+        targetLng,
+      );
+      final dt = targetSample.timestamp.difference(_lastDelayedReturnedSample!.timestamp).inMilliseconds.abs() / 1000.0;
+      if (dt > 0) estimatedSpeed = dist / dt;
+    }
+
+    // Update last delayed sample
+    _lastDelayedReturnedSample = LocationSample(
+      latitude: targetLat,
+      longitude: targetLng,
+      accuracy: targetSample.accuracy,
+      bearing: targetSample.bearing,
+      timestamp: targetSample.timestamp,
+    );
+
+    // Stationary detection with hysteresis
+    if (_stationary) {
+      // If currently stationary, only leave stationary if speed is clearly above threshold or distance large
+      if (estimatedSpeed > startSpeedThresholdMs) {
+        _stationary = false;
+      }
+    } else {
+      // If not stationary, enter stationary if speed below stop threshold and within deadzone
+      if (estimatedSpeed < stopSpeedThresholdMs) {
+        // Also check small positional jitter (compare last animated)
+        if (_lastAnimated != null) {
+          final jitter = haversineDistanceMeters(_lastAnimated!.latitude, _lastAnimated!.longitude, targetLat, targetLng);
+          if (jitter <= stationaryDeadZoneMeters) {
+            _stationary = true;
+          }
+        } else {
+          // no lastAnimated yet -> treat as stationary
+          _stationary = true;
+        }
+      }
+    }
+
+    // If stationary -> snap and hold (prevent oscillation)
+    if (_stationary) {
+      final snappedBearing = _normalizeBearing(targetBearing);
+      final animated = AnimatedLocation(
+        latitude: targetLat,
+        longitude: targetLng,
+        bearing: snappedBearing,
+        timestamp: DateTime.now(),
+      );
+      _lastAnimated = animated;
+      _outController.add(animated);
+      return;
+    }
+
+    // If this is the first time, emit immediate position without interpolation
+    if (_lastAnimated == null) {
+      _lastAnimated = AnimatedLocation(
+        latitude: targetLat,
+        longitude: targetLng,
+        bearing: _normalizeBearing(targetBearing),
+        timestamp: DateTime.now(),
+      );
+      _outController.add(_lastAnimated!);
+      return;
+    }
+
+    // Interpolation factor per frame: compute desired smoothing duration based on distance but more responsive.
+    final last = _lastAnimated!;
+    final dist = haversineDistanceMeters(last.latitude, last.longitude, targetLat, targetLng); // meters
+
+    // Choose smoothing duration: responsive - min 150ms, max 900ms
+    final desiredMs = (40 + dist * 4).clamp(150, 900).toDouble(); // tuned heuristic
+    final frameMs = (1000 / fps);
+    double t = frameMs / desiredMs; // fraction to move this frame
+    if (t > 1.0) t = 1.0;
+    if (t < 0.001) t = 0.001;
+
+    // If distance tiny, snap to avoid micro-oscillations
+    if (dist <= 0.5) {
+      final animated = AnimatedLocation(
+        latitude: targetLat,
+        longitude: targetLng,
+        bearing: _normalizeBearing(targetBearing),
+        timestamp: DateTime.now(),
+      );
+      _lastAnimated = animated;
+      _outController.add(animated);
+      return;
+    }
+
+    final newLat = _interpLat(last.latitude, targetLat, t);
+    final newLng = _interpLng(last.longitude, targetLng, t);
+    final newBearing = _interpBearing(last.bearing, targetBearing, t);
+
+    final animated = AnimatedLocation(
+      latitude: newLat,
+      longitude: newLng,
+      bearing: newBearing,
+      timestamp: DateTime.now(),
+    );
+
+    _lastAnimated = animated;
+    _outController.add(animated);
+  }
+}

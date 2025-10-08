@@ -9,6 +9,9 @@ class ViewpointView extends StatefulWidget {
 }
 
 class _ViewpointViewState extends State<ViewpointView> {
+  // PointAnnotationManager used to add symbols above line layers
+  dynamic _pointManager; // will be set to the platform-specific PointAnnotationManager
+
   MapboxMapController? _controller;
 
   final List<Map<String, dynamic>> _viewpoints = [
@@ -40,7 +43,8 @@ class _ViewpointViewState extends State<ViewpointView> {
         children: [
           Expanded(
             flex: 2,
-            child: MapboxMap(
+            child: MapboxMap(scrollGesturesEnabled: false, /*scroll-inserted*/
+
               initialCameraPosition: const CameraPosition(target: LatLng(52.2297, 21.0122), zoom: 13.0),
               onMapCreated: _onMapCreated,
               trackCameraPosition: true,

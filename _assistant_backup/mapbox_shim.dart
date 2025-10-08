@@ -207,6 +207,9 @@ class MapboxMap extends StatefulWidget {
 }
 
 class _MapboxMapState extends State<MapboxMap> {
+  // PointAnnotationManager used to add symbols above line layers
+  dynamic _pointManager; // will be set to the platform-specific PointAnnotationManager
+
   late MapboxMapController _controller;
   late fm.MapController _fmController;
 

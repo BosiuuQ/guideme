@@ -28,6 +28,9 @@ class _PlaceSearchBody extends StatefulWidget {
 }
 
 class _PlaceSearchBodyState extends State<_PlaceSearchBody> {
+  // PointAnnotationManager used to add symbols above line layers
+  dynamic _pointManager; // will be set to the platform-specific PointAnnotationManager
+
   final TextEditingController _controller = TextEditingController();
   List<dynamic> _suggestions = [];
   List<String> _recentSearches = [];

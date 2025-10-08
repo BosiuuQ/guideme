@@ -18,29 +18,47 @@ class MainMapWidget extends StatefulWidget {
 }
 
 class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProviderStateMixin {
+  // coalescing flag for UI updates
+  bool _uiUpdateScheduled = false;
   late MapLogicHandler _mapLogic;
   double _speedKmh = 0.0;
   double _bearing = 0.0;
 
   @override
+
+  @override
   void initState() {
     super.initState();
-    _mapLogic = MapLogicHandler();
+    _mapLogic = MapLogicHandler(debug: true);
     _mapLogic.tickerProvider = this;
+
+    // coalesce UI updates into a single frame and only commit if values change meaningfully
     _mapLogic.onUpdate = () {
-      try {
-        final v = _mapLogic.currentSpeedKmh;
-        final b = _mapLogic.currentBearing;
-        if (mounted) {
-          setState(() {
-            _speedKmh = double.parse(v.toStringAsFixed(1));
-            _bearing = b;
-          });
-        }
-      } catch (e) {}
+      if (!_uiUpdateScheduled) {
+        _uiUpdateScheduled = true;
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          try {
+            final v = _mapLogic.currentSpeedKmh;
+            final b = _mapLogic.currentBearing;
+            final sp = double.parse(v.toStringAsFixed(1));
+            bool shouldSet = false;
+            if ((_speedKmh - sp).abs() >= 0.5) shouldSet = true;
+            if ((_bearing - b).abs() >= 2.0) shouldSet = true;
+            if (mounted && shouldSet) {
+              setState(() {
+                _speedKmh = sp;
+                _bearing = b;
+              });
+            }
+          } catch (e) {}
+          _uiUpdateScheduled = false;
+        });
+      }
     };
 
+    _mapLogic.start();
   }
+
 
   @override
   void dispose() {
@@ -123,7 +141,7 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
                           if (lat != null && lng != null) {
                             _mapLogic.controller?.moveCameraImmediate(mb.LatLng(lat, lng), 16.0);
                             Navigator.of(context).push(MaterialPageRoute(builder: (_) => RoutePlannerView(origin: _mapLogic.displayPosition ?? mb.LatLng(lat,lng), destination: mb.LatLng(lat,lng), title: (res['name'] as String?) ?? 'Cel',)));
-                          
+
                           }
                         } catch (e) {}
                       }
@@ -226,9 +244,10 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
   }
 
   Widget _buildMap() {
-    return mb.MapboxMap(
+    return mb.MapboxMap(scrollGesturesEnabled: false, /*scroll-inserted*/
+
       accessToken: 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg',
-      initialCameraPosition: const mb.CameraPosition(target: mb.LatLng(52.2297, 21.0122), zoom: 19, bearing: 0.0, tilt: 75.0),
+      initialCameraPosition: const mb.CameraPosition(target: mb.LatLng(52.2297, 21.0122), zoom: 18, bearing: 0.0, tilt: 75.0),
       styleUri: 'mapbox://styles/bosiuuq/cmb9d84f300t001r25irj47nk',
       onMapCreated: (controller) {
         _mapLogic.onMapCreated(controller);

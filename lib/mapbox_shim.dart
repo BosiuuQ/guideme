@@ -6,7 +6,9 @@
 // to cover the calls used across the app (addSymbol, updateSymbolImmediate,
 // moveCameraImmediate, basic line support). You may need to expand it for full parity.
 
+import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as native;
@@ -34,13 +36,17 @@ class SymbolOptions {
   final LatLng geometry;
   final String? iconImage; // asset path to an image
   final double? rotation;
-  const SymbolOptions({required this.geometry, this.iconImage, this.rotation});
+  final double? iconSize;
+  const SymbolOptions({required this.geometry, this.iconImage, this.rotation, this.iconSize});
 }
 
 class Symbol {
   final String id;
   LatLng geometry;
-  Symbol(this.id, this.geometry);
+  final String? iconImage;
+  final double? rotation;
+  final double? iconSize;
+  Symbol(this.id, this.geometry, {this.iconImage, this.rotation, this.iconSize});
 }
 
 /// LineOptions / Line model (minimal)
@@ -60,6 +66,14 @@ class Line {
 
 /// MapboxMapController - wraps native MapboxMap and basic annotation managers.
 class MapboxMapController {
+
+  // OPTIMIZATIONS: image cache and throttling to reduce native annotation churn
+  final Map<String, Uint8List> _imageCache = {};
+  final Map<String, DateTime> _lastSymbolUpdateTime = {}; 
+  final Map<String, dynamic> _nativeSymbols = {}; // store native PointAnnotation objects by our symbol id
+  
+  DateTime? _lastCameraMoveTime;
+
   final native.MapboxMap _mapboxMap;
   native.PointAnnotationManager? _pointManager;
   native.PolylineAnnotationManager? _lineManager;
@@ -92,50 +106,105 @@ class MapboxMapController {
   Future<Symbol> addSymbol(SymbolOptions options) async {
     _symbolCounter += 1;
     final id = 'sym_$_symbolCounter';
-    // create PointAnnotationOptions
+
     try {
       Uint8List? imageBytes;
       if (options.iconImage != null) {
-        final bd = await rootBundle.load(options.iconImage!);
-        imageBytes = bd.buffer.asUint8List();
+        if (options.iconImage != null) { imageBytes = _imageCache[options.iconImage!] ?? (await rootBundle.load(options.iconImage!)).buffer.asUint8List(); _imageCache[options.iconImage!] = imageBytes; }
       }
-      final nativeOptions = native.PointAnnotationOptions(
-        geometry: native.Point(coordinates: native.Position(options.geometry.longitude, options.geometry.latitude)),
-        image: imageBytes,
-        // iconSize: options.rotation != null ? 1.0 : null,
+
+      // 🔑 Tworzymy PointAnnotationManager tak, żeby jego warstwa była NAD liniami
+      _pointManager ??= await _mapboxMap.annotations.createPointAnnotationManager(
+        // używamy `below`, czyli warstwa symboli pojawi się bezpośrednio nad wskazanym layerem
+        below: null, // null = na samej górze
       );
-      final created = await _pointManager?.create(nativeOptions);
-      // created may contain an id; we still return our local Symbol
+
+      final nativeOptions = native.PointAnnotationOptions(
+        geometry: native.Point(
+          coordinates: native.Position(
+            options.geometry.longitude,
+            options.geometry.latitude,
+          ),
+        ),
+        image: imageBytes,
+        iconSize: options.iconSize,
+      );
+
+      final _created = await _pointManager?.create(nativeOptions); 
+      try { if (_created != null) _nativeSymbols[id] = _created; } catch(_) {}
     } catch (e) {
-      // fallback: ignore native creation issues
+      if (kDebugMode) debugPrint('addSymbol error: $e');
     }
-    final sym = Symbol(id, options.geometry);
+
+    final sym = Symbol(
+      id,
+      options.geometry,
+      iconImage: options.iconImage,
+      rotation: options.rotation,
+    );
     _symbols[id] = sym;
     return sym;
   }
 
-  Future<void> updateSymbolImmediate(Symbol symbol, LatLng newPos) async {
-    // Update native annotation if possible; if not, update local cache.
+  
+
+Future<void> updateSymbolImmediate(Symbol symbol, LatLng newPos) async {
+    // Throttle frequent symbol native updates (avoid heavy native churn)
     try {
-      // naive approach: delete & recreate native annotation matching geometry
-      // (no mapping between native id and our id is kept here)
-      await _pointManager?.deleteAll();
-      // recreate all symbols with updated positions
-      for (final s in _symbols.entries) {
-        final pos = s.value.geometry;
-        final nativeOptions = native.PointAnnotationOptions(
-          geometry: native.Point(coordinates: native.Position(pos.longitude, pos.latitude)),
-        );
-        await _pointManager?.create(nativeOptions);
+      final _now = DateTime.now();
+      final _last = _lastSymbolUpdateTime[symbol.id];
+      if (_last != null && _now.difference(_last).inMilliseconds < 50) {
+        // update cache position only, skip native churn (we'll still update when due)
+        symbol.geometry = newPos;
+        _symbols[symbol.id] = symbol;
+        return;
       }
+      _lastSymbolUpdateTime[symbol.id] = _now;
+    } catch (_) {}
+    // Update native annotation for this symbol if possible; avoid deleting all annotations.
+    try {
+      final nativeAnn = _nativeSymbols[symbol.id];
+      Uint8List? imageBytes;
+      try {
+        if (symbol.iconImage != null) {
+          final img = _imageCache[symbol.iconImage!];
+          imageBytes = img;
+          if (imageBytes == null) {
+            final bytes = await rootBundle.load(symbol.iconImage!);
+            imageBytes = bytes.buffer.asUint8List();
+            _imageCache[symbol.iconImage!] = imageBytes;
+          }
+        }
+      } catch (_) {}
+      if (nativeAnn != null) {
+        // Try to update existing native annotation if API supports update (best-effort)
+        try {
+          // best-effort: set properties on the native annotation object and call update
+          try { nativeAnn.geometry = native.Point(coordinates: native.Position(newPos.longitude, newPos.latitude)); } catch(_) {}
+          try { if (imageBytes != null) nativeAnn.image = imageBytes; } catch(_) {}
+          try { if (symbol.iconSize != null) nativeAnn.iconSize = symbol.iconSize; } catch(_) {}
+          try { await _pointManager?.update(nativeAnn); return; } catch(_) {}
+        } catch (_) {}
+        // If update not supported, attempt to delete only this annotation and recreate it
+        try { await _pointManager?.delete(nativeAnn); } catch (_) {}
+      }
+      // create new native annotation for this symbol
+      final nativeOptions = native.PointAnnotationOptions(
+        geometry: native.Point(
+          coordinates: native.Position(newPos.longitude, newPos.latitude),
+        ),
+        image: imageBytes,
+        iconSize: symbol.iconSize ?? 0.5,
+      );
+      final _created = await _pointManager?.create(nativeOptions);
+      try { if (_created != null) _nativeSymbols[symbol.id] = _created; } catch(_) {}
     } catch (_) {}
     symbol.geometry = newPos;
     _symbols[symbol.id] = symbol;
   }
-
-  Future<void> moveCameraImmediate(LatLng target, double zoom) async {
+Future<void> moveCameraImmediate(LatLng target, double zoom, {double? bearing}) async {
     try {
-      final cam = native.CameraOptions(center: native.Point(coordinates: native.Position(target.longitude, target.latitude)), zoom: zoom);
+      final cam = native.CameraOptions(center: native.Point(coordinates: native.Position(target.longitude, target.latitude)), zoom: zoom, bearing: bearing);
       await _mapboxMap.setCamera(cam);
       try { _bearing = cam.bearing ?? _bearing; } catch(_) {}
       try { _tilt = cam.pitch ?? _tilt; } catch(_) {}
@@ -143,14 +212,39 @@ class MapboxMapController {
   }
 
   /// Smooth move with optional duration in milliseconds
-  Future<void> moveCamera(LatLng target, {double? zoom, int ms = 300}) async {
+  Future<void> moveCamera(LatLng target, {double? zoom, int ms = 300, double? bearing}) async {
     try {
-      final cam = native.CameraOptions(center: native.Point(coordinates: native.Position(target.longitude, target.latitude)), zoom: zoom);
+      final cam = native.CameraOptions(center: native.Point(coordinates: native.Position(target.longitude, target.latitude)), zoom: zoom, bearing: bearing);
       await _mapboxMap.flyTo(cam, native.MapAnimationOptions(duration: ms));
       try { _bearing = cam.bearing ?? _bearing; } catch(_) {}
       try { _tilt = cam.pitch ?? _tilt; } catch(_) {}
     } catch (_) {}
   }
+
+  /// Best-effort wrapper that sets camera using existing shim methods.
+  /// If the shim has an animated `moveCamera` it will use it; otherwise falls back to immediate.
+  Future<void> setCamera(LatLng target, {double? zoom, double? bearing, int ms = 300}) async {
+    try {
+      // Prefer using existing animated moveCamera if implemented in shim
+      try {
+        await moveCamera(target, zoom: zoom, ms: ms, bearing: bearing);
+        // If shim does not apply bearing, we still update cached bearing variable if present
+        try { _bearing = bearing ?? _bearing; } catch (_) {}
+        return;
+      } catch (_) {
+        // fallback to immediate move
+        await moveCameraImmediate(target, zoom ?? 18.0, bearing: bearing);
+        try { _bearing = bearing ?? _bearing; } catch (_) {}
+        return;
+      }
+    } catch (e) {
+      debugPrint('setCamera error/fallback: $e');
+      // final fallback
+      try { await moveCameraImmediate(target, zoom ?? 18.0, bearing: bearing); } catch (_) {}
+    }
+  }
+
+
 
   Future<Line> addLine(LineOptions options) async {
     _lineCounter += 1;
@@ -161,11 +255,176 @@ class MapboxMapController {
     try {
       final pts = options.geometry.map((p) => native.Position(p.longitude, p.latitude)).toList();
       final lineString = native.LineString(coordinates: pts);
-      final polylineOptions = native.PolylineAnnotationOptions(geometry: lineString);
+      // convert color string like '#RRGGBB' or '#AARRGGBB' into an integer ARGB (nullable)
+      int? _lineColorInt;
+      try {
+        if (options.lineColor != null) {
+          var s = options.lineColor!.replaceAll('#', '').toUpperCase();
+          if (s.length == 6) {
+            // assume no alpha -> add FF
+            s = 'FF' + s;
+          } else if (s.length == 8) {
+            // already AARRGGBB
+          } else {
+            s = ''; // invalid
+          }
+          if (s.isNotEmpty) {
+            _lineColorInt = int.parse(s, radix: 16);
+          }
+        }
+      } catch (_) {
+        _lineColorInt = null;
+      }
+      final polylineOptions = native.PolylineAnnotationOptions(geometry: lineString, lineWidth: options.lineWidth, lineColor: _lineColorInt);
       await _lineManager?.create(polylineOptions);
     } catch (_) {}
     return line;
   }
+
+  Future<void> addEmissiveLine(
+      LineOptions options, {
+        double emissiveStrength = 2.0,
+        String? layerId,
+      }) async {
+    _lineCounter += 1;
+    final id = layerId ?? 'emissive_line_$_lineCounter';
+    final sourceId = '${id}_source';
+
+    try {
+      // Build GeoJSON FeatureCollection with the line geometry
+      final coords = options.geometry.map((p) => [p.longitude, p.latitude]).toList();
+      final geojson = {
+        "type": "FeatureCollection",
+        "features": [
+          {
+            "type": "Feature",
+            "geometry": {"type": "LineString", "coordinates": coords},
+            "properties": {}
+          }
+        ]
+      };
+      final geojsonStr = jsonEncode(geojson);
+
+      // Remove existing style layer/source with same id if present (best-effort)
+      try {
+        await _mapboxMap.style.removeStyleLayer(id);
+      } catch (_) {}
+      try {
+        await _mapboxMap.style.removeStyleSource(sourceId);
+      } catch (_) {}
+      // Add GeoJsonSource
+      try {
+        await _mapboxMap.style.addSource(native.GeoJsonSource(id: sourceId, data: geojsonStr));
+      } catch (e) {
+        debugPrint('addEmissiveLine: addSource error: $e');
+      }
+
+      // Convert color string like '#AARRGGBB' or '#RRGGBB' to int (ARGB)
+      int? colorInt;
+      try {
+        if (options.lineColor != null) {
+          var s = options.lineColor!.replaceAll('#', '').toUpperCase();
+          if (s.length == 6) s = 'FF' + s;
+          if (s.length == 8) {
+            colorInt = int.parse(s, radix: 16);
+          }
+        }
+      } catch (_) {
+        colorInt = null;
+      }
+
+      // Build LineLayer with desired paint properties including lineEmissiveStrength
+      final layer = native.LineLayer(
+        id: id,
+        sourceId: sourceId,
+        lineJoin: native.LineJoin.ROUND,
+        lineCap: native.LineCap.ROUND,
+      );
+
+      // set paint props (use null-checks)
+      try {
+        if (colorInt != null) layer.lineColor = colorInt;
+        if (options.lineWidth != null) layer.lineWidth = options.lineWidth;
+        // set strong emissive value (unit: intensity)
+        layer.lineEmissiveStrength = emissiveStrength;
+        // ensure it's fully opaque on paint-level
+        layer.lineOpacity = 1.0;
+        // optionally give a casing-like effect via lineGapWidth/lineWidth but we keep it simple
+      } catch (e) {
+        debugPrint('addEmissiveLine: setting layer props error: $e');
+      }
+
+      // Add the layer on top of the map (you can change position if needed)
+      try {
+        await _mapboxMap.style.addLayer(layer);
+      } catch (e) {
+        debugPrint('addEmissiveLine: addLayer error: $e');
+      }
+
+      
+
+// Ensure symbols are rendered above the newly added line layer.
+// If a pointAnnotationManager already exists, destroy it so that when symbols
+// are added later the manager (and its layer) will be created above the line.
+try {
+  final pm = _pointManager;
+  if (pm != null) {
+    try {
+      await (pm as dynamic).destroy();
+    } catch (_) {
+      try {
+        await (pm as dynamic).dispose();
+      } catch (_) {
+        try {
+          await (pm as dynamic).removeAll();
+        } catch (_) {}
+      }
+    }
+    _pointManager = null;
+  }
+} catch (e) {
+  debugPrint('addEmissiveLine: destroying point manager error: $e');
+}
+// keep a lightweight cache entry so we can remove later if needed
+      _lines[id] = Line(id: id, geometry: options.geometry, lineWidth: options.lineWidth, lineColor: options.lineColor);
+    } catch (e) {
+      debugPrint('addEmissiveLine error: $e');
+    }
+  }
+  /// Remove previously added line layer and source by id (best-effort).
+  Future<void> clearLines({String? layerId}) async {
+    try {
+      if (layerId != null) {
+        try { await _mapboxMap.style.removeStyleLayer(layerId); } catch (_) {}
+        try { await _mapboxMap.style.removeStyleSource('\${layerId}_source'); } catch (_) {}
+      } else {
+        // remove all tracked lines
+        for (final id in _lines.keys.toList()) {
+          try { await _mapboxMap.style.removeStyleLayer(id); } catch (_) {}
+          try { await _mapboxMap.style.removeStyleSource('\${id}_source'); } catch (_) {}
+        }
+      }
+    } catch (e) {
+      debugPrint('clearLines error: \$e');
+    }
+    _lines.clear();
+  }
+
+
+  /// Remove polyline annotation manager lines (best-effort) created via addLine.
+  Future<void> clearAnnotationLines() async {
+    try {
+      // try manager deleteAll / removeAll / dispose
+      try { await (_lineManager as dynamic).deleteAll(); } catch (_) {}
+      try { await (_lineManager as dynamic).dispose(); } catch (_) {}
+      try { await (_lineManager as dynamic).removeAll(); } catch (_) {}
+    } catch (e) {
+      debugPrint('clearAnnotationLines error: $e');
+    }
+    _lines.clear();
+  }
+
+
 }
 
 /// MapboxMap widget - wraps native MapWidget and exposes a simpler API.
@@ -227,7 +486,7 @@ class _MapboxMapState extends State<MapboxMap> {
     return native.MapWidget(
       key: const ValueKey('mapWidget'),
       cameraOptions: cam,
-      styleUri: widget.styleUri ?? '',
+      styleUri: (widget.styleUri != null && widget.styleUri!.isNotEmpty) ? widget.styleUri! : 'mapbox://styles/bosiuuq/cmb9d84f300t001r25irj47nk',
       onTapListener: (dynamic ctx) {
         try {
           final coords = ctx?.point?.coordinates;

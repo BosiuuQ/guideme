@@ -226,7 +226,8 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
   }
 
   Widget _buildMap() {
-    return mb.MapboxMap(
+    return mb.MapboxMap(scrollGesturesEnabled: false, /*scroll-inserted*/
+
       accessToken: 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg',
       initialCameraPosition: const mb.CameraPosition(target: mb.LatLng(52.2297, 21.0122), zoom: 19),
       onMapCreated: (controller) {

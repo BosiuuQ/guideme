@@ -18,6 +18,9 @@ class ViewpointView extends StatefulWidget {
 }
 
 class _ViewpointViewState extends State<ViewpointView> {
+  // PointAnnotationManager used to add symbols above line layers
+  dynamic _pointManager; // will be set to the platform-specific PointAnnotationManager
+
   late Future<List<Viewpoint>> _futureViewpoints;
   List<Viewpoint> _allViewpoints = [];
   String _searchQuery = "";

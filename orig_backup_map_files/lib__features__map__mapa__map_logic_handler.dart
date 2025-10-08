@@ -267,7 +267,7 @@ class MapLogicHandler {
       _programmaticCameraMove = true;
       _lastProgrammaticMoveTime = DateTime.now();
       _controller!.moveCamera(CameraUpdate.newCameraPosition(
-        CameraPosition(target: _targetLocation!, zoom: 17, bearing: _bearing, tilt: 45),
+        CameraPosition(target: _targetLocation!, zoom: 17, bearing: _animBearing ?? _currentBearing, tilt: 45),
       ));
     }
     onUpdate();

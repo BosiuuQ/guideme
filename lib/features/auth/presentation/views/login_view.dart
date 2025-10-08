@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+// import 'package:font_awesome_flutter/font_awesome_flutter.dart'; // removed (unused)
 import 'package:go_router/go_router.dart';
 import 'package:guide_me/core/config/routing/app_routes.dart';
 import 'package:guide_me/core/constants/app_assets.dart';
@@ -33,49 +33,48 @@ class _LoginViewState extends State<LoginView> {
     super.dispose();
   }
 
-Future<void> _login() async {
-  if (_isLoading) return;
-  FocusScope.of(context).unfocus();
-  if (_formKey.currentState!.validate()) {
-    setState(() {
-      _isLoading = true;
-    });
-    try {
-      final email = _loginController.text.trim();
-      final password = _passwordController.text;
-
-      final userData = await LoginAuth.loginUser(
-        email: email,
-        password: password,
-      );
-
-      // ✅ Zabezpieczenie po await
-      if (!mounted) return;
-
-      // ✅ Zapisz dane do secure storage
-      await _secureStorage.write(key: 'email', value: email);
-      await _secureStorage.write(key: 'password', value: password);
-
-      if (!mounted) return;
-
-      if (userData.isNotEmpty) {
-        context.goNamed(AppRoutes.mainView);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
-      }
-    }
-    if (mounted) {
+  Future<void> _login() async {
+    if (_isLoading) return;
+    FocusScope.of(context).unfocus();
+    if (_formKey.currentState!.validate()) {
       setState(() {
-        _isLoading = false;
+        _isLoading = true;
       });
+      try {
+        final email = _loginController.text.trim();
+        final password = _passwordController.text;
+
+        final userData = await LoginAuth.loginUser(
+          email: email,
+          password: password,
+        );
+
+        // ✅ Zabezpieczenie po await
+        if (!mounted) return;
+
+        // ✅ Zapisz dane do secure storage
+        await _secureStorage.write(key: 'email', value: email);
+        await _secureStorage.write(key: 'password', value: password);
+
+        if (!mounted) return;
+
+        if (userData.isNotEmpty) {
+          context.goNamed(AppRoutes.mainView);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString())),
+          );
+        }
+      }
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
-}
-
 
   void _changePasswordVisibility() {
     setState(() {
@@ -220,58 +219,56 @@ Future<void> _login() async {
                                       ),
                                     ),
                             ),
-                            const SizedBox(height: 24),
-                            const Center(
-                              child: Text(
-                                "lub za pomocą",
-                                style: TextStyle(
-                                  fontSize: 14.0,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                              children: [
-                                ElevatedButton.icon(
-                                  onPressed: _loginWithGoogle,
-                                  icon: Image.asset(
-                                    AppAssets.googleIcon,
-                                    height: 20.0,
-                                    width: 20.0,
-                                  ),
-                                  style: ButtonStyle(
-                                    backgroundColor:
-                                        const MaterialStatePropertyAll(
-                                      Colors.white,
-                                    ),
-                                  ),
-                                  label: const Text(
-                                    'Google',
-                                    style: TextStyle(color: Colors.black),
-                                  ),
-                                ),
-                                ElevatedButton.icon(
-                                  onPressed: _loginWithFacebook,
-                                  icon: const FaIcon(
-                                    FontAwesomeIcons.facebook,
-                                    color: Colors.blue,
-                                  ),
-                                  style: ButtonStyle(
-                                    backgroundColor:
-                                        const MaterialStatePropertyAll(
-                                      Colors.white,
-                                    ),
-                                  ),
-                                  label: const Text(
-                                    'Facebook',
-                                    style: TextStyle(color: Colors.black),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 30),
+                            // ▼▼▼ Removed: "lub za pomocą" + social buttons ▼▼▼
+                            // const SizedBox(height: 24),
+                            // const Center(
+                            //   child: Text(
+                            //     "lub za pomocą",
+                            //     style: TextStyle(
+                            //       fontSize: 14.0,
+                            //       color: Colors.grey,
+                            //     ),
+                            //   ),
+                            // ),
+                            // const SizedBox(height: 16),
+                            // Row(
+                            //   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            //   children: [
+                            //     ElevatedButton.icon(
+                            //       onPressed: _loginWithGoogle,
+                            //       icon: Image.asset(
+                            //         AppAssets.googleIcon,
+                            //         height: 20.0,
+                            //         width: 20.0,
+                            //       ),
+                            //       style: ButtonStyle(
+                            //         backgroundColor:
+                            //             MaterialStatePropertyAll(Colors.white),
+                            //       ),
+                            //       label: const Text(
+                            //         'Google',
+                            //         style: TextStyle(color: Colors.black),
+                            //       ),
+                            //     ),
+                            //     ElevatedButton.icon(
+                            //       onPressed: _loginWithFacebook,
+                            //       icon: FaIcon(
+                            //         FontAwesomeIcons.facebook,
+                            //         color: Colors.blue,
+                            //       ),
+                            //       style: ButtonStyle(
+                            //         backgroundColor:
+                            //             MaterialStatePropertyAll(Colors.white),
+                            //       ),
+                            //       label: const Text(
+                            //         'Facebook',
+                            //         style: TextStyle(color: Colors.black),
+                            //       ),
+                            //     ),
+                            //   ],
+                            // ),
+                            // const SizedBox(height: 30),
+                            // ▲▲▲ Removed section ends ▲▲▲
                           ],
                         ),
                       ),

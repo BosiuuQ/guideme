@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter/material.dart';
-import '';
 
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -59,7 +58,8 @@ import 'package:guide_me/features/shop/shop_home_view.dart';
 import 'package:guide_me/features/znajomi/PremiumChatView.dart';
 
 import 'package:guide_me/features/spoty/spot_add_view.dart';
-import 'package:guide_me/mapbox_shim.dart';
+
+import '../../../mapbox_compat.dart';
 
 
 final routerProvider = Provider((ref) => _router);
@@ -166,7 +166,7 @@ GoRoute(
         state: state,
         child: const MainView(),
       ),
-
+      
       routes: [
         GoRoute(
           path: AppRoutes.garageView,
@@ -177,7 +177,7 @@ GoRoute(
             transitionType: RouterTransitionType.FADE,
             child: const GarageView(),
           ),
-
+          
           routes: [
 GoRoute(
   path: '/vehicle-details',
@@ -210,7 +210,7 @@ GoRoute(
             ),
           ],
         ),
-
+        
         GoRoute(
           path: AppRoutes.viewpointView,
           name: AppRoutes.viewpointView,

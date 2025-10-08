@@ -17,6 +17,9 @@ class PlaceSearchSheet extends StatefulWidget {
 }
 
 class _PlaceSearchSheetState extends State<PlaceSearchSheet> {
+  // PointAnnotationManager used to add symbols above line layers
+  dynamic _pointManager; // will be set to the platform-specific PointAnnotationManager
+
   final TextEditingController _ctrl = TextEditingController();
   List<Map<String, dynamic>> _suggestions = [];
   List<String> _recentSearches = [];

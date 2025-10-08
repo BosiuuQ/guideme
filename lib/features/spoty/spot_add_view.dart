@@ -1,13 +1,5 @@
-import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import '';
-import 'package:image_picker/image_picker.dart';
-import 'package:geolocator/geolocator.dart';
-import 'package:intl/intl.dart';
-import 'package:geocoding/geocoding.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'spoty_backend.dart';
-import 'package:guide_me/mapbox_shim.dart';
 
 class SpotAddView extends StatefulWidget {
   const SpotAddView({super.key});
@@ -16,255 +8,446 @@ class SpotAddView extends StatefulWidget {
   State<SpotAddView> createState() => _SpotAddViewState();
 }
 
-class _SpotAddViewState extends State<SpotAddView> {
-  final _formKey = GlobalKey<FormState>();
-  final TextEditingController titleCtrl = TextEditingController();
-  final TextEditingController descCtrl = TextEditingController();
-  final TextEditingController locationCtrl = TextEditingController();
-  final TextEditingController startCtrl = TextEditingController();
-  final TextEditingController endCtrl = TextEditingController();
-  final TextEditingController rulesCtrl = TextEditingController();
+class _SpotAddViewState extends State<SpotAddView>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _fade1;
+  late final Animation<double> _fade2;
+  late final Animation<double> _fade3;
+  late final Animation<double> _scaleBadge;
 
-  String visibility = 'Publiczna';
-  File? _selectedImage;
-  LatLng? selectedLatLng;
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..forward();
 
-  final List<String> eventCategories = [
-    'Chill', 'Motoryzacyjny', 'Zdjęciowy', 'Klubowy', 'Zlot tematyczny', 'Inne'
-  ];
-  String selectedCategory = 'Chill';
-
-  Future<void> _pickImage() async {
-    final picked = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (picked != null) setState(() => _selectedImage = File(picked.path));
+    _fade1 = CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.45, curve: Curves.easeOut));
+    _fade2 = CurvedAnimation(parent: _ctrl, curve: const Interval(0.25, 0.7, curve: Curves.easeOut));
+    _fade3 = CurvedAnimation(parent: _ctrl, curve: const Interval(0.45, 1.0, curve: Curves.easeOut));
+    _scaleBadge = Tween<double>(begin: 0.95, end: 1.0)
+        .animate(CurvedAnimation(parent: _ctrl, curve: const Interval(0.2, 0.6, curve: Curves.easeOutBack)));
   }
 
-  Future<void> _selectLocationOnMap() async {
-    final pos = await Geolocator.getCurrentPosition();
-    selectedLatLng = LatLng(pos.latitude, pos.longitude);
-    try {
-      final placemarks = await placemarkFromCoordinates(pos.latitude, pos.longitude);
-      final placemark = placemarks.first;
-      final address =
-          "${placemark.locality ?? ''}, ${placemark.street ?? ''} ${placemark.subThoroughfare ?? ''} (${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)})";
-      setState(() => locationCtrl.text = address);
-    } catch (_) {
-      setState(() => locationCtrl.text = "(${pos.latitude}, ${pos.longitude})");
-    }
-  }
-
-  Future<void> _selectDateTime(TextEditingController controller) async {
-    final now = DateTime.now();
-    final pickedDate = await showDatePicker(
-      context: context,
-      initialDate: now,
-      firstDate: now,
-      lastDate: DateTime(now.year + 1),
-    );
-    if (pickedDate == null) return;
-
-    final pickedTime = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-    );
-    if (pickedTime == null) return;
-
-    final dt = DateTime(pickedDate.year, pickedDate.month, pickedDate.day,
-        pickedTime.hour, pickedTime.minute);
-
-    controller.text = DateFormat('yyyy-MM-dd HH:mm').format(dt);
-  }
-
-  Future<void> _submitSpot() async {
-    if (!_formKey.currentState!.validate() || _selectedImage == null || selectedLatLng == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wypełnij wszystkie pola i wybierz zdjęcie')));
-      return;
-    }
-
-    try {
-      debugPrint("🔁 Dodawanie spotu...");
-
-      final start = DateFormat('yyyy-MM-dd HH:mm').parse(startCtrl.text);
-      final end = DateFormat('yyyy-MM-dd HH:mm').parse(endCtrl.text);
-      final duration = end.difference(start);
-
-      if (duration.inMinutes <= 0) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⛔ Czas zakończenia musi być po rozpoczęciu')));
-        return;
-      }
-
-      debugPrint("🕓 Start: $start");
-      debugPrint("🕓 End: $end");
-      debugPrint("⏱️ Czas trwania: ${duration.inMinutes} min");
-
-      final fileBytes = await _selectedImage!.readAsBytes();
-      final fileName = 'spot_${DateTime.now().millisecondsSinceEpoch}.jpg';
-
-      final storageResponse = await Supabase.instance.client.storage
-          .from('spoty')
-          .uploadBinary(fileName, fileBytes, fileOptions: const FileOptions(upsert: true));
-
-      final imageUrl = Supabase.instance.client.storage
-          .from('spoty')
-          .getPublicUrl(fileName);
-
-      debugPrint("✅ Zdjęcie przesłane: $imageUrl");
-
-      final success = await SpotyBackend.addSpot(
-        tytul: titleCtrl.text,
-        opis: descCtrl.text,
-        lokalizacja: locationCtrl.text,
-        lat: selectedLatLng!.latitude,
-        lng: selectedLatLng!.longitude,
-        widocznosc: visibility == 'Publiczna' ? 'publiczna' : 'tylko_znajomi',
-        data: start.toUtc(),
-        czasTrwania: duration,
-        typ: selectedCategory,
-        zasady: rulesCtrl.text,
-        zdjecieUrl: imageUrl,
-      );
-
-      if (success && context.mounted) {
-        debugPrint("✅ Spot dodany!");
-        Navigator.pop(context);
-      } else {
-        debugPrint("❌ Błąd dodawania spotu.");
-      }
-    } catch (e) {
-      debugPrint("❌ Błąd: $e");
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd: $e')));
-    }
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    const bgStart = Color(0xFF0C0F1C); // głęboki granat
+    const bgEnd = Color(0xFF0A1F2E);   // turkusowy granat
+    const accent = Color(0xFF00E5FF);  // neon turkus (akcent GuideMe)
+    const accent2 = Color(0xFF4AF2C5); // miękki miętowy
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0C0F1C),
+      backgroundColor: bgStart,
       appBar: AppBar(
+        elevation: 0,
         backgroundColor: Colors.transparent,
-        title: const Text("Dodaj Spot", style: TextStyle(color: Colors.white)),
+        leading: IconButton(
+          tooltip: 'Wstecz',
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white70),
+          onPressed: () => Navigator.maybePop(context),
+        ),
+        title: const Text('Dodaj Spot', style: TextStyle(color: Colors.white)),
+        centerTitle: false,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              _buildTextField(titleCtrl, "Tytuł"),
-              _buildTextField(descCtrl, "Opis", maxLines: 3),
-              _buildTextField(locationCtrl, "Lokalizacja"),
-              TextButton.icon(
-                onPressed: _selectLocationOnMap,
-                icon: const Icon(Icons.map, color: Colors.cyanAccent),
-                label: const Text("Wybierz na mapie", style: TextStyle(color: Colors.cyanAccent)),
-              ),
-              _buildDropdown(),
-              _buildDateTimePickers(),
-              _buildCategoryDropdown(),
-              _buildTextField(rulesCtrl, "Zasady", maxLines: 2),
-              if (_selectedImage != null)
-                Image.file(_selectedImage!, height: 120, fit: BoxFit.cover),
-              TextButton.icon(
-                onPressed: _pickImage,
-                icon: const Icon(Icons.photo, color: Colors.cyanAccent),
-                label: const Text("Wybierz zdjęcie", style: TextStyle(color: Colors.cyanAccent)),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _submitSpot,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.cyanAccent,
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+      body: Stack(
+        children: [
+          // Tło: gradient + delikatne „promienie”
+          Positioned.fill(
+            child: DecoratedBox(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [bgStart, bgEnd],
                 ),
-                child: const Text("Dodaj Spot", style: TextStyle(fontSize: 16)),
-              )
+              ),
+            ),
+          ),
+          Positioned(
+            left: -80,
+            top: -40,
+            child: _GlowBlob(size: 220, color: accent.withOpacity(0.12)),
+          ),
+          Positioned(
+            right: -60,
+            bottom: -20,
+            child: _GlowBlob(size: 180, color: accent2.withOpacity(0.10)),
+          ),
+
+          // Zawartość
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+              child: Column(
+                children: [
+                  // Badge z wersją
+                  ScaleTransition(
+                    scale: _scaleBadge,
+                    child: _VersionPill(
+                      label: 'Dostępne od',
+                      version: 'Beta 0.5.0',
+                      accent: accent,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  // Karta „glassmorphism”
+                  Expanded(
+                    child: FadeTransition(
+                      opacity: _fade1,
+                      child: _GlassCard(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Ikona / ilustracja
+                            TweenAnimationBuilder<double>(
+                              tween: Tween(begin: 0.9, end: 1.0),
+                              duration: const Duration(milliseconds: 900),
+                              curve: Curves.easeOutBack,
+                              builder: (context, value, child) => Transform.scale(scale: value, child: child),
+                              child: Container(
+                                padding: const EdgeInsets.all(18),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: RadialGradient(
+                                    colors: [
+                                      accent.withOpacity(0.22),
+                                      Colors.transparent,
+                                    ],
+                                  ),
+                                  border: Border.all(color: Colors.white.withOpacity(0.08)),
+                                ),
+                                child: const Icon(Icons.location_on_rounded, size: 72, color: Colors.white),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            // Tytuł
+                            FadeTransition(
+                              opacity: _fade2,
+                              child: const Text(
+                                'Dodawanie Spotów',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 26,
+                                  letterSpacing: 0.2,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            // Podtytuł
+                            FadeTransition(
+                              opacity: _fade3,
+                              child: Text(
+                                'Ta funkcja zostanie odblokowana w aktualizacji\nBeta 0.5.0. Przygotuj miejsce, opis i zdjęcie!',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.78),
+                                  fontSize: 14.5,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            // „Checklist”
+                            FadeTransition(
+                              opacity: _fade3,
+                              child: _Checklist(
+                                items: const [
+                                  'Zgłoś lokalizację i precyzyjne współrzędne',
+                                  'Dodaj tytuł, opis i zasady spotu',
+                                  'Ustaw widoczność: publiczna / tylko dla znajomych',
+                                  'Dodaj zdjęcie podglądowe miejsca',
+                                ],
+                                accent: accent,
+                              ),
+                            ),
+                            const SizedBox(height: 28),
+                            // Przyciski
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const SizedBox(width: 12),
+                                _NeonButton.outlined(
+                                  label: 'Powrót',
+                                  icon: Icons.arrow_back_rounded,
+                                  onPressed: () => Navigator.maybePop(context),
+                                  accent: accent,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            // Paski postępu „coming soon”
+                            const _SoonProgress(),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Delikatna świecąca plama tła
+class _GlowBlob extends StatelessWidget {
+  final double size;
+  final Color color;
+  const _GlowBlob({required this.size, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size, height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(color: color, blurRadius: size * 0.75, spreadRadius: size * 0.25),
+        ],
+      ),
+    );
+  }
+}
+
+/// Szklana karta z rozmyciem
+class _GlassCard extends StatelessWidget {
+  final Widget child;
+  const _GlassCard({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(22, 26, 22, 22),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            color: Colors.white.withOpacity(0.04),
+            border: Border.all(color: Colors.white.withOpacity(0.08)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.35),
+                blurRadius: 26,
+                spreadRadius: 2,
+                offset: const Offset(0, 18),
+              ),
             ],
           ),
+          child: child,
         ),
       ),
     );
   }
+}
 
-  Widget _buildDateTimePickers() {
-    return Row(
+/// Pastylka z wersją
+class _VersionPill extends StatelessWidget {
+  final String label;
+  final String version;
+  final Color accent;
+  const _VersionPill({required this.label, required this.version, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.lock_clock_rounded, size: 18, color: accent),
+          const SizedBox(width: 8),
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.75),
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              gradient: LinearGradient(
+                colors: [accent.withOpacity(0.85), accent.withOpacity(0.45)],
+              ),
+            ),
+            child: Text(
+              version,
+              style: const TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.w800,
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Listowana „checklista” punktów
+class _Checklist extends StatelessWidget {
+  final List<String> items;
+  final Color accent;
+  const _Checklist({required this.items, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
       children: [
-        Expanded(
-          child: TextFormField(
-            controller: startCtrl,
-            readOnly: true,
-            onTap: () => _selectDateTime(startCtrl),
-            style: const TextStyle(color: Colors.white),
-            decoration: _inputDecoration("Data startowa"),
-            validator: (val) => val == null || val.isEmpty ? "Wybierz datę" : null,
+        for (final text in items)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  height: 22, width: 22,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: accent.withOpacity(0.6), width: 1.6),
+                    gradient: RadialGradient(colors: [
+                      accent.withOpacity(0.25),
+                      Colors.transparent,
+                    ]),
+                  ),
+                  child: const Icon(Icons.check_rounded, size: 16, color: Colors.white),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    text,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.85),
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: TextFormField(
-            controller: endCtrl,
-            readOnly: true,
-            onTap: () => _selectDateTime(endCtrl),
-            style: const TextStyle(color: Colors.white),
-            decoration: _inputDecoration("Data zakończenia"),
-            validator: (val) => val == null || val.isEmpty ? "Wybierz czas" : null,
-          ),
-        ),
       ],
     );
   }
+}
 
-  Widget _buildTextField(TextEditingController controller, String label,
-      {int maxLines = 1}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: TextFormField(
-        controller: controller,
-        maxLines: maxLines,
-        style: const TextStyle(color: Colors.white),
-        decoration: _inputDecoration(label),
-        validator: (value) => value == null || value.isEmpty ? "Pole wymagane" : null,
-      ),
+/// Neonowy przycisk (wypełniony lub obrys)
+class _NeonButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+  final Color accent;
+  final bool outlined;
+
+  const _NeonButton({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    required this.accent,
+  }) : outlined = false;
+
+  const _NeonButton.outlined({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    required this.accent,
+  }) : outlined = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = outlined
+        ? OutlinedButton.styleFrom(
+            side: BorderSide(color: accent.withOpacity(0.8), width: 1.4),
+            foregroundColor: accent,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          )
+        : ElevatedButton.styleFrom(
+            backgroundColor: accent,
+            foregroundColor: Colors.black,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          );
+
+    final child = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(width: 8),
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+      ],
     );
+
+    return outlined
+        ? OutlinedButton(onPressed: onPressed, style: base, child: child)
+        : ElevatedButton(onPressed: onPressed, style: base, child: child);
+  }
+}
+
+/// Pasek „coming soon” – delikatna animacja
+class _SoonProgress extends StatefulWidget {
+  const _SoonProgress();
+
+  @override
+  State<_SoonProgress> createState() => _SoonProgressState();
+}
+
+class _SoonProgressState extends State<_SoonProgress> with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
   }
 
-  InputDecoration _inputDecoration(String label) {
-    return InputDecoration(
-      labelText: label,
-      labelStyle: const TextStyle(color: Colors.white70),
-      filled: true,
-      fillColor: const Color(0xFF1A1D2E),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-    );
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
   }
 
-  Widget _buildDropdown() {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: DropdownButtonFormField<String>(
-        value: visibility,
-        decoration: _inputDecoration("Widoczność"),
-        dropdownColor: const Color(0xFF1A1D2E),
-        style: const TextStyle(color: Colors.white),
-        items: const [
-          DropdownMenuItem(value: 'Publiczna', child: Text("Publiczna")),
-          DropdownMenuItem(value: 'Tylko dla znajomych', child: Text("Tylko dla znajomych")),
-        ],
-        onChanged: (val) => setState(() => visibility = val!),
-      ),
-    );
-  }
-
-  Widget _buildCategoryDropdown() {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: DropdownButtonFormField<String>(
-        value: selectedCategory,
-        decoration: _inputDecoration("Kategoria wydarzenia"),
-        dropdownColor: const Color(0xFF1A1D2E),
-        style: const TextStyle(color: Colors.white),
-        items: eventCategories.map((cat) => DropdownMenuItem(value: cat, child: Text(cat))).toList(),
-        onChanged: (val) => setState(() => selectedCategory = val!),
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _c.drive(CurveTween(curve: Curves.easeInOut)),
+      child: Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: Text(
+          'COMING SOON…',
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.55),
+            letterSpacing: 3.2,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
     );
   }

@@ -24,6 +24,9 @@ class RoutePlannerView extends StatefulWidget {
 }
 
 class _RoutePlannerViewState extends State<RoutePlannerView> {
+  // PointAnnotationManager used to add symbols above line layers
+  dynamic _pointManager; // will be set to the platform-specific PointAnnotationManager
+
   GoogleMapController? _mapController;
   Set<Polyline> _polylines = {};
   Set<Marker> _markers = {};

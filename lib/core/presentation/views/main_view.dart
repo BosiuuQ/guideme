@@ -21,9 +21,9 @@ class MainView extends StatelessWidget {
           height: 100.0,
         ),
       ),
-      body: SafeArea(bottom: false,
+      body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.only(top: 4.0),
+          padding: const EdgeInsets.all(12.0).copyWith(top: 4.0),
           child: MainMapWidget()
         ),
       ),

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:guide_me/features/garage/garage_backend.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter/scheduler.dart';
 
 class VehicleLogView extends StatefulWidget {
   final String vehicleId;

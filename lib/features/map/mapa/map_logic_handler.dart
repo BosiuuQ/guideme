@@ -1,240 +1,665 @@
+// lib/features/map/mapa/map_logic_handler.dart
+// Improved: velocity integration + EMA + watchdog + best-effort camera/symbol rotation.
+// Poprawki: _destinationPoint zwraca List<double>, dodano _interpBearing.
+
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
-import 'package:guide_me/mapbox_shim.dart' as mb;
-import 'package:guide_me/mapbox_shim.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:guide_me/mapbox_shim.dart' as mb;
 
+class LocationSample {
+  final double latitude;
+  final double longitude;
+  final double accuracy;
+  final double? bearing;
+  final DateTime timestamp;
+  final DateTime receivedAt;
+  LocationSample({
+    required this.latitude,
+    required this.longitude,
+    required this.accuracy,
+    this.bearing,
+    DateTime? timestamp,
+    DateTime? receivedAt,
+  })  : timestamp = timestamp ?? DateTime.now(),
+        receivedAt = receivedAt ?? DateTime.now();
+}
+
+class AnimatedLocation {
+  final double latitude;
+  final double longitude;
+  final double bearing;
+  final DateTime timestamp;
+  AnimatedLocation({
+    required this.latitude,
+    required this.longitude,
+    required this.bearing,
+    required this.timestamp,
+  });
+}
+
+class RoutePolyline {
+  final List<List<double>> points;
+  RoutePolyline(this.points);
+}
 
 class MapLogicHandler {
+  Timer? _permPollTimer;
+  // OPTIMIZATIONS: reduce UI update frequency by only notifying on meaningful changes
+  final double _posThresholdMeters = 1.0; // only notify UI if moved more than 1m
+  final double _bearingThresholdDeg = 2.0; // only notify UI if bearing changed more than 2°
+  final double _speedThresholdKmh = 0.5; // only notify if speed changed more than 0.5 km/h
+  mb.LatLng? _lastNotifiedPos;
+  double? _lastNotifiedBearing;
+  double? _lastNotifiedSpeedKmh;
+// public
   VoidCallback? onUpdate;
   TickerProvider? tickerProvider;
 
+  // shim controller & symbol
   mb.MapboxMapController? controller;
   mb.Symbol? _userSymbol;
 
-  Position? _lastGpsPosition;
-  DateTime? _lastGpsTime;
+  // config
+  int delayMs;
+  final int fps;
+  final RoutePolyline? route;
+  final double mapMatchThresholdMeters;
+  final bool debug;
 
-  LatLng? _displayPos;
-  LatLng? _targetLocation;
-  double _bearing = 0.0;
-  double _currentSpeed = 0.0;
-  double _cameraBearing = 0.0;
+  // internal
+  final List<LocationSample> _buffer = [];
+  final StreamController<AnimatedLocation> _outController = StreamController<AnimatedLocation>.broadcast();
+  Stream<AnimatedLocation> get onAnimatedLocation => _outController.stream;
 
-  final double _speedAlpha = 0.25;
-  final double _bearingAlpha = 0.12;
-  final double _correctionPerSecond = 1.0;
-  final double _maxCorrectionFactor = 2.0;
-  final double _minSpeedForBearing = 0.1;
+  Timer? _ticker;
+  bool _running = false;
 
-  // Ticker
-  Ticker? _ticker;
-  DateTime? _lastTick;
-  StreamSubscription<Position>? _posSub;
+  // animated state + velocity
+  double? _animLat;
+  double? _animLng;
+  double? _animBearing;
+  double _currentSpeed = 0.0; // m/s
+  double _currentBearing = 0.0;
+  double _velNorth = 0.0; // meters/sec north (approx)
+  double _velEast = 0.0; // meters/sec east
 
-  MapLogicHandler({this.onUpdate, this.tickerProvider});
+  // subs & time
+  StreamSubscription<Position>? _positionSub;
+  DateTime? _lastTickTime;
 
-  Future<void> onMapCreated(mb.MapboxMapController ctrl) async {
-    controller = ctrl;
-    try {
-      if (tickerProvider != null) {
-        _ticker = tickerProvider!.createTicker(_onTick);
-        _ticker!.start();
+  // watchdog
+  DateTime? _lastReceivedAt;
+  Timer? _pollTimer;
+  final int _pollIntervalMs = 700;
+
+  // tuning
+  final double _tau = 0.28; // faster responsiveness
+  final double _minAlpha = 0.01;
+  final double _maxTurnRateDegPerSec = 300.0;
+  final double _maxStepMPerSec = 80.0;
+
+  MapLogicHandler({
+    this.delayMs = 180,
+    this.fps = 60,
+    this.route,
+    this.mapMatchThresholdMeters = 20.0,
+    this.debug = false,
+  }) {
+    if (debug) debugPrint('[MapLogic] constructed (delayMs=$delayMs fps=$fps tau=$_tau)');
+  }
+  // permission watcher: stops polling for permission changes
+
+  /// Start polling permissions periodically and auto-restart MapLogic when granted.
+  void _startPermissionWatcher() {
+    if (_permPollTimer != null) return;
+    if (debug) debugPrint('[MapLogic] starting permission watcher');
+    _permPollTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      try {
+        final p = await Geolocator.checkPermission();
+        if (p == LocationPermission.always || p == LocationPermission.whileInUse) {
+          if (debug) debugPrint('[MapLogic] permission granted — stopping watcher and starting engine');
+          _stopPermissionWatcher();
+          // only start if not already running
+          if (!_running) {
+            try {
+              await start();
+            } catch (e) {
+              if (debug) debugPrint('[MapLogic] error auto-starting after permission granted: $e');
+            }
+          }
+        }
+      } catch (e) {
+        if (debug) debugPrint('[MapLogic] perm watcher error: $e');
       }
-    } catch (e) {}
-    _initLocationListening();
+    });
+  }
+
+  /// Stop the permission watcher (safe to call even if not running).
+  void _stopPermissionWatcher() {
+    try {
+      _permPollTimer?.cancel();
+    } catch (_) {}
+    _permPollTimer = null;
+  }
+
+  // ---------------- start / stop ----------------
+  Future<void> start() async {
+    if (_running) {
+      if (debug) debugPrint('[MapLogic] start() already running');
+      return;
+    }
+
+    // permissions
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (debug) debugPrint('[MapLogic] location service disabled');
+        try { onUpdate?.call(); } catch (_) {}
+        return;
+      }
+    } catch (e) {
+      if (debug) debugPrint('[MapLogic] isLocationServiceEnabled error: $e');
+    }
+
+    try {
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        if (debug) debugPrint('[MapLogic] permission denied (not requesting here)');
+        try { onUpdate?.call(); } catch (_) {}
+        _startPermissionWatcher();
+        return;
+      }
+      if (permission == LocationPermission.deniedForever) {
+        if (debug) debugPrint('[MapLogic] permission deniedForever');
+        try { onUpdate?.call(); } catch (_) {}
+        // start permission watcher to auto-retry if user changes permissions in settings
+        _startPermissionWatcher();
+        return;
+      }
+    } catch (e) {
+      if (debug) debugPrint('[MapLogic] permission check error: $e');
+      try { onUpdate?.call(); } catch (_) {}
+      return;
+    }
+
+    _running = true;
+    if (debug) debugPrint('[MapLogic] subscribing to position stream');
+
+    try {
+      final settings = LocationSettings(accuracy: LocationAccuracy.bestForNavigation, distanceFilter: 0);
+      _positionSub = Geolocator.getPositionStream(locationSettings: settings).listen((pos) {
+        if (debug) debugPrint('[MapLogic] position callback: ${pos.latitude},${pos.longitude} acc:${pos.accuracy} head:${pos.heading}');
+        final s = LocationSample(
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          accuracy: pos.accuracy ?? 50.0,
+          bearing: (pos.heading >= 0 && pos.heading <= 360) ? pos.heading : null,
+          timestamp: pos.timestamp != null ? DateTime.fromMillisecondsSinceEpoch(pos.timestamp!.millisecondsSinceEpoch) : DateTime.now(),
+          receivedAt: DateTime.now(),
+        );
+        _lastReceivedAt = DateTime.now();
+        _processIncomingSampleAndVelocity(s);
+        onLocation(s);
+      }, onError: (e) {
+        if (debug) debugPrint('[MapLogic] position stream error: $e');
+      });
+    } catch (e) {
+      if (debug) debugPrint('[MapLogic] getPositionStream error: $e');
+    }
+
+    // watchdog
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(Duration(milliseconds: _pollIntervalMs), (t) async {
+      if (!_running) return;
+      final last = _lastReceivedAt;
+      final now = DateTime.now();
+      if (last == null || now.difference(last).inMilliseconds > _pollIntervalMs) {
+        if (debug) debugPrint('[MapLogic] watchdog: no samples in ${_pollIntervalMs}ms -> forcing getCurrentPosition()');
+        try {
+          Position? pos;
+          // Try best-for-navigation quick attempt
+          try {
+            pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.bestForNavigation, timeLimit: const Duration(seconds: 5));
+          } catch (_) {
+            pos = null;
+          }
+
+          // If not obtained, try last known position
+          if (pos == null) {
+            try {
+              pos = await Geolocator.getLastKnownPosition();
+            } catch (_) {
+              pos = null;
+            }
+          }
+
+          // If still null, try a forced Android GPS attempt (some devices need this)
+          if (pos == null) {
+            try {
+              pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high, forceAndroidLocationManager: true, timeLimit: const Duration(seconds: 8));
+            } catch (_) {
+              pos = null;
+            }
+          }
+
+          if (pos != null) {
+            final s = LocationSample(
+              latitude: pos.latitude,
+              longitude: pos.longitude,
+              accuracy: pos.accuracy ?? 50.0,
+              bearing: (pos.heading >= 0 && pos.heading <= 360) ? pos.heading : null,
+              timestamp: pos.timestamp != null ? DateTime.fromMillisecondsSinceEpoch(pos.timestamp!.millisecondsSinceEpoch) : DateTime.now(),
+              receivedAt: DateTime.now(),
+            );
+            if (debug) debugPrint('[MapLogic] watchdog obtained fallback position: ${pos.latitude},${pos.longitude} acc:${pos.accuracy}');
+            _lastReceivedAt = DateTime.now();
+            _processIncomingSampleAndVelocity(s);
+            onLocation(s);
+          } else {
+            if (debug) debugPrint('[MapLogic] watchdog: could not obtain any position from getCurrentPosition/getLastKnownPosition');
+          }
+        } catch (e) {
+          if (debug) debugPrint('[MapLogic] watchdog getCurrentPosition failed: $e');
+        }
+      }
+    });
+
+    final period = Duration(milliseconds: (1000 / fps).round());
+    _ticker = Timer.periodic(period, (_) => _tick());
+    if (debug) debugPrint('[MapLogic] engine started (tick ${period.inMilliseconds}ms)');
+  }
+
+  void stop() {
+    if (!_running) return;
+    _running = false;
+    _ticker?.cancel();
+    _ticker = null;
+    _positionSub?.cancel();
+    _positionSub = null;
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    if (debug) debugPrint('[MapLogic] stopped');
   }
 
   Future<void> dispose() async {
-    await _posSub?.cancel();
-    _ticker?.stop();
-    _ticker?.dispose();
-    _ticker = null;
+    stop();
+    try { if (!_outController.isClosed) await _outController.close(); } catch (_) {}
+    _stopPermissionWatcher();
+    if (debug) debugPrint('[MapLogic] disposed');
   }
 
-  Future<void> _initLocationListening() async {
+  // ---------------- helper: update velocity from last two samples ----------------
+  void _processIncomingSampleAndVelocity(LocationSample s) {
+    // compute east/north meters/sec velocity from last sample in buffer (if exists)
     try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        return;
-      }
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
-        return;
-      }
-
-      try {
-        final p = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
-        _onNewGps(p);
-      } catch (e) {}
-
-      _posSub = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.best, distanceFilter: 0),
-      ).listen((pos) {
-        _onNewGps(pos);
-      });
-    } catch (e) {}
-    _ticker?.start();
-  }
-
-  void _onNewGps(Position pos) {
-    final now = DateTime.now();
-    double measuredSpeed = pos.speed != null && pos.speed!.isFinite ? pos.speed! : 0.0;
-    if (_lastGpsPosition != null && _lastGpsTime != null) {
-      final dt = now.difference(_lastGpsTime!).inMilliseconds / 1000.0;
-      if (dt > 0) {
-        final meters = _distanceMeters(_lastGpsPosition!.latitude, _lastGpsPosition!.longitude, pos.latitude, pos.longitude);
-        final calcSpeed = meters / dt;
-        if (measuredSpeed <= 0.01) measuredSpeed = calcSpeed;
-      }
-    }
-
-    _currentSpeed = (_speedAlpha * measuredSpeed) + ((1 - _speedAlpha) * _currentSpeed);
-
-    _targetLocation = LatLng(pos.latitude, pos.longitude);
-
-    if (_lastGpsPosition != null) {
-      final bearingNow = _calculateBearing(LatLng(_lastGpsPosition!.latitude, _lastGpsPosition!.longitude), _targetLocation!);
-      if (_currentSpeed > _minSpeedForBearing) {
-        _bearing = bearingNow;
-      }
-    }
-
-    if (_displayPos == null) {
-      _displayPos = LatLng(pos.latitude, pos.longitude);
-      try {
-        if (_userSymbol == null && controller != null) {
-          controller!.addSymbol(SymbolOptions(geometry: _displayPos!, iconImage: 'assets/icons/marker.png')).then((sym) {
-            _userSymbol = sym;
-          }).catchError((e) {});
-        } else if (_userSymbol != null && controller != null) {
-          controller!.updateSymbolImmediate(_userSymbol!, _displayPos!);
+      if (_buffer.isNotEmpty) {
+        final prev = _buffer.last;
+        final dt = s.receivedAt.difference(prev.receivedAt).inMilliseconds / 1000.0;
+        if (dt > 0.05) {
+          final meters = _haversineMeters(prev.latitude, prev.longitude, s.latitude, s.longitude);
+          final speed = meters / dt;
+          // direction from prev -> s
+          final brng = _bearingBetween(prev.latitude, prev.longitude, s.latitude, s.longitude);
+          // decompose
+          final rad = brng * math.pi / 180.0;
+          _velNorth = speed * math.cos(rad);
+          _velEast = speed * math.sin(rad);
+          _currentSpeed = speed;
+          if (s.bearing != null) _currentBearing = s.bearing!;
         }
-        if (controller != null) controller!.moveCameraImmediate(_displayPos!, 19);
-      } catch (e) {}
-    }
-
-    _lastGpsPosition = pos;
-    _lastGpsTime = now;
-
-    // ensure immediate UI update
-    try { onUpdate?.call(); } catch (e) {}
+      }
+    } catch (_) {}
   }
 
-  void _onTick(Duration elapsed) {
-    final now = DateTime.now();
-    if (_lastTick == null) {
-      _lastTick = now;
-      return;
+  // ---------------- map created ----------------
+  Future<void> onMapCreated(mb.MapboxMapController ctrl) async {
+    if (debug) debugPrint('[MapLogic] onMapCreated');
+    controller = ctrl;
+    if (_animLat != null && _animLng != null) {
+      final pos = mb.LatLng(_animLat!, _animLng!);
+      try {
+        final c = controller as dynamic;
+        try { await c.moveCameraImmediate(pos, 18.0, bearing: _animBearing ?? _currentBearing); } catch (_) {}
+      } catch (_) {}
     }
-    final dt = now.difference(_lastTick!).inMilliseconds / 1000.0;
-    _lastTick = now;
+  }
+
+  // ---------------- buffer handling ----------------
+  void onLocation(LocationSample sample) {
+    _buffer.add(sample);
+    _buffer.sort((a, b) => a.receivedAt.compareTo(b.receivedAt));
+    final latest = _buffer.isNotEmpty ? _buffer.last : null;
+    if (latest != null) {
+      final cutoff = latest.receivedAt.subtract(Duration(seconds: 10));
+      while (_buffer.isNotEmpty && _buffer.first.receivedAt.isBefore(cutoff)) _buffer.removeAt(0);
+    }
+    if (debug) debugPrint('[MapLogic] buffered sample buf=${_buffer.length} ${sample.latitude},${sample.longitude} acc=${sample.accuracy}');
+  }
+
+  // ---------------- prediction helpers ----------------
+  List<double> _predictForward(LocationSample s, double leadSec) {
+    if (s.bearing == null) return [s.latitude, s.longitude];
+    // use current velocity estimate if available
+    double speed = _currentSpeed;
+    final distMeters = speed * leadSec;
+    if (distMeters <= 0.4) return [s.latitude, s.longitude];
+    final p = _destinationPointList(s.latitude, s.longitude, s.bearing ?? _currentBearing, distMeters);
+    return p;
+  }
+
+  LocationSample? _findDelayedSampleByReceived(int delayMs) {
+    if (_buffer.isEmpty) return null;
+    _buffer.sort((a, b) => a.receivedAt.compareTo(b.receivedAt));
+    final latest = _buffer.last;
+    final targetTime = latest.receivedAt.subtract(Duration(milliseconds: delayMs));
+    if (targetTime.isAfter(latest.receivedAt)) return latest;
+
+    LocationSample? prev;
+    LocationSample? next;
+    for (final s in _buffer) {
+      if (s.receivedAt.isBefore(targetTime) || s.receivedAt.isAtSameMomentAs(targetTime)) prev = s;
+      else { next = s; break; }
+    }
+    if (prev == null && next == null) return latest;
+    if (prev != null && next == null) return prev;
+    if (prev == null && next != null) return next;
+    final totalMs = next!.receivedAt.difference(prev!.receivedAt).inMilliseconds;
+    if (totalMs <= 0) return prev;
+    final elapsedMs = targetTime.difference(prev.receivedAt).inMilliseconds;
+    double frac = (elapsedMs / totalMs).clamp(0.0, 1.0);
+    final lat = prev.latitude + (next.latitude - prev.latitude) * frac;
+    final lng = prev.longitude + (next.longitude - prev.longitude) * frac;
+    final bearing = _interpBearing(prev.bearing, next.bearing, frac);
+    return LocationSample(latitude: lat, longitude: lng, accuracy: next.accuracy, bearing: bearing, timestamp: DateTime.now(), receivedAt: targetTime);
+  }
+
+  double _interpBearing(double? a, double? b, double frac) {
+    if (a == null && b == null) return 0.0;
+    if (a == null) return b!;
+    if (b == null) return a;
+    double diff = ((b - a + 540.0) % 360.0) - 180.0;
+    return (a + diff * frac) % 360.0;
+  }
+
+  // ---------------- main tick: integrate velocity + EMA for smoothness ----------------
+  void _tick() {
+    if (!_running) return;
+    if (_buffer.isEmpty) return;
+    final now = DateTime.now();
+    final dt = _lastTickTime == null ? (1.0 / fps) : now.difference(_lastTickTime!).inMilliseconds / 1000.0;
+    _lastTickTime = now;
     if (dt <= 0) return;
 
-    if (_displayPos == null) return;
+    // adapt effective delay lower when buffer small
+    final latest = _buffer.last;
+    final first = _buffer.first;
+    final spanMs = latest.receivedAt.difference(first.receivedAt).inMilliseconds;
+    int effectiveDelay = delayMs;
+    if (spanMs < 600) effectiveDelay = (delayMs * 0.5).toInt().clamp(80, delayMs);
 
-    if (_currentSpeed > 0.001) {
-      final moveMeters = _currentSpeed * dt;
-      _displayPos = _destinationPoint(_displayPos!, _bearing, moveMeters);
+    // pick target sample (interpolated)
+    final targetSample = _findDelayedSampleByReceived(effectiveDelay);
+    if (targetSample == null) return;
+
+    // recompute latency in ms (clamped)
+    final latencyMs = now.difference(targetSample.receivedAt).inMilliseconds.clamp(0, 1000);
+    final leadSec = (latencyMs / 1000.0).clamp(0.0, 0.9);
+
+    // predictive target using velocity-based short integration
+    final pred = _predictForward(targetSample, leadSec);
+    double tgtLat = pred[0];
+    double tgtLng = pred[1];
+    final tgtBearing = targetSample.bearing ?? _currentBearing;
+
+    // route snapping
+    if (route != null && route!.points.length >= 2) {
+      final snapped = _closestOnRoute(tgtLat, tgtLng);
+      final d = _haversineMeters(snapped[0], snapped[1], tgtLat, tgtLng);
+      if (d <= mapMatchThresholdMeters) {
+        tgtLat = snapped[0]; tgtLng = snapped[1];
+      }
     }
 
-    if (_targetLocation != null) {
-      final distToTarget = _distanceMeters(_displayPos!.latitude, _displayPos!.longitude, _targetLocation!.latitude, _targetLocation!.longitude);
-      if (distToTarget > 0.01) {
-        double corrSpeed = (_correctionPerSecond * (distToTarget / 5.0)).clamp(0.0, _maxCorrectionFactor);
-        final corrMeters = corrSpeed * dt;
-        if (corrMeters >= distToTarget) {
-          _displayPos = _targetLocation;
-        } else {
-          final corrBearing = _calculateBearing(_displayPos!, _targetLocation!);
-          _displayPos = _destinationPoint(_displayPos!, corrBearing, corrMeters);
+    // velocity integration: move current anim position by velocity*dt if we have velocity
+    if (_animLat != null && _animLng != null) {
+      // convert velNorth/velEast meters/sec to deg lat/lng per second approx
+      final degPerMeterLat = 1.0 / 111132.0;
+      final degPerMeterLng = 1.0 / (111319.0 * math.cos(_animLat! * math.pi / 180.0));
+      final predLatFromVel = _animLat! + (_velNorth * dt) * degPerMeterLat;
+      final predLngFromVel = _animLng! + (_velEast * dt) * degPerMeterLng;
+
+      // combine with alpha smoothing to gently follow target but also honor velocity for smoothness
+      final alphaBase = (1.0 - math.exp(-dt / _tau)).clamp(_minAlpha, 0.98);
+
+      // distance to target
+      final distanceToTarget = _haversineMeters(_animLat!, _animLng!, tgtLat, tgtLng);
+      final catchup = (distanceToTarget / (_maxStepMPerSec * dt)).clamp(0.0, 2.0);
+      final alpha = (alphaBase + catchup * 0.5).clamp(_minAlpha, 0.99);
+
+      // targetPos that blends predictive velocity and measured target
+      final blendFactor = 0.5; // how much velocity influences immediate step (tuneable)
+      final blendedLat = predLatFromVel * blendFactor + tgtLat * (1 - blendFactor);
+      final blendedLng = predLngFromVel * blendFactor + tgtLng * (1 - blendFactor);
+
+      // update anim pos smoothly
+      _animLat = _animLat! + (blendedLat - _animLat!) * alpha;
+      _animLng = _animLng! + (blendedLng - _animLng!) * alpha;
+
+      // bearing: interpolate with max turn rate
+      final curB = _animBearing ?? _normalizeBearing(tgtBearing);
+      double diff = ((tgtBearing - curB + 540.0) % 360.0) - 180.0;
+      final maxTurn = _maxTurnRateDegPerSec * dt;
+      if (diff > maxTurn) diff = maxTurn;
+      if (diff < -maxTurn) diff = -maxTurn;
+      _animBearing = _normalizeBearing(curB + diff * alpha);
+    } else {
+      // init
+      _animLat = tgtLat;
+      _animLng = tgtLng;
+      _animBearing = _normalizeBearing(tgtBearing);
+    }
+
+    // update speed estimate using recent samples
+    try {
+      final recent = _buffer.where((s) => s.receivedAt.isAfter(DateTime.now().subtract(Duration(seconds: 3)))).toList();
+      if (recent.length >= 2) {
+        double dist = 0.0; double tim = 0.0;
+        for (int i = 1; i < recent.length; i++) {
+          dist += _haversineMeters(recent[i-1].latitude, recent[i-1].longitude, recent[i].latitude, recent[i].longitude);
+          tim += recent[i].receivedAt.difference(recent[i-1].receivedAt).inMilliseconds.abs() / 1000.0;
+        }
+        if (tim > 0) _currentSpeed = dist / tim;
+      }
+    } catch (_) {}
+
+    // create animated object, push to stream and apply to map
+    final animated = AnimatedLocation(latitude: _animLat!, longitude: _animLng!, bearing: _animBearing ?? 0.0, timestamp: DateTime.now());
+    try { if (!_outController.isClosed) _outController.add(animated); } catch (_) {}
+    _applyToMap(animated);
+
+    if (debug) debugPrint('[MapLogic] tick α=${(_tau).toStringAsFixed(3)} buf=${_buffer.length} anim=${_animLat!.toStringAsFixed(6)},${_animLng!.toStringAsFixed(6)} b=${_animBearing!.toStringAsFixed(1)} latencyMs=${latencyMs.toInt()}');
+    try { onUpdate?.call(); } catch (_) {}
+  }
+
+  // ---------------- apply to map (best-effort camera rotation + symbol rotation) ----------------
+  Future<void> _applyToMap(AnimatedLocation anim) async {
+    try {
+      final pos = mb.LatLng(anim.latitude, anim.longitude);
+
+      // add symbol if missing
+      if (_userSymbol == null && controller != null) {
+        try {
+          _userSymbol = await controller!.addSymbol(mb.SymbolOptions(geometry: pos, iconImage: 'assets/icons/user_dot.png', iconSize: 0.40));
+        } catch (e) {
+          if (debug) debugPrint('[MapLogic] addSymbol failed: $e');
+        }
+      } else if (_userSymbol != null && controller != null) {
+        try {
+          final c = controller as dynamic;
+          try {
+            await c.updateSymbolImmediate(_userSymbol!, pos);
+          } catch (_) {
+            try { await c.updateSymbol(_userSymbol!, mb.SymbolOptions(geometry: pos)); } catch (_) {}
+          }
+        } catch (e) {
+          if (debug) debugPrint('[MapLogic] updateSymbol error: $e');
         }
       }
-    }
 
-    if (_currentSpeed > _minSpeedForBearing) {
-      _cameraBearing = _lerpAngle(_cameraBearing, _bearing, _bearingAlpha);
-    } else {
-      _cameraBearing = _lerpAngle(_cameraBearing, 0.0, _bearingAlpha);
-    }
-
-    try {
-      if (_userSymbol != null && controller != null && _displayPos != null) {
-        controller!.updateSymbolImmediate(_userSymbol!, _displayPos!);
-        controller!.moveCameraImmediate(_displayPos!, 19);
+      // try rotate symbol (best-effort)
+      if (_userSymbol != null && controller != null) {
+        final c = controller as dynamic;
+        try { await c.updateSymbolRotation(_userSymbol!, anim.bearing); } catch (_) {}
+        try { await c.updateSymbolProperties(_userSymbol!, {'rotation': anim.bearing}); } catch (_) {}
+        try { await c.updateSymbolProperties(_userSymbol!, {'icon-rotate': anim.bearing}); } catch (_) {}
+        try { await c.updateSymbolProperties(_userSymbol!, {'iconRotate': anim.bearing}); } catch (_) {}
       }
-    } catch (e) {}
 
-    try { onUpdate?.call(); } catch (e) {}
-
+      // camera movement: prefer setCamera with bearing (if shim supports). Use dynamic calls.
+      if (controller != null) {
+        final c = controller as dynamic;
+        var moved = false;
+        try {
+          try {
+            await c.setCamera(pos, zoom: 18.0, bearing: anim.bearing, ms: 120);
+            moved = true;
+          } catch (_) {}
+          if (!moved) {
+            try {
+              await c.moveCamera(pos, zoom: 18.0, ms: 120);
+              moved = true;
+            } catch (_) {}
+          }
+          if (!moved) {
+            try {
+              await c.moveCameraImmediate(pos, 18.0, bearing: _animBearing ?? _currentBearing);
+              moved = true;
+            } catch (_) {}
+          }
+        } catch (e) {
+          if (debug) debugPrint('[MapLogic] camera move error: $e');
+        }
+      }
+    } catch (e) {
+      if (debug) debugPrint('[MapLogic] _applyToMap error: $e');
+    }
   }
 
-
-  LatLng _destinationPoint(LatLng from, double bearingDeg, double distanceMeters) {
-    final double R = 6371000.0;
-    final double brng = bearingDeg * math.pi / 180.0;
-    final double lat1 = from.latitude * math.pi / 180.0;
-    final double lon1 = from.longitude * math.pi / 180.0;
-    final double dDivR = distanceMeters / R;
-    final double lat2 = math.asin(math.sin(lat1) * math.cos(dDivR) + math.cos(lat1) * math.sin(dDivR) * math.cos(brng));
-    final double lon2 = lon1 + math.atan2(math.sin(brng) * math.sin(dDivR) * math.cos(lat1), math.cos(dDivR) - math.sin(lat1) * math.sin(lat2));
-    return LatLng(lat2 * 180.0 / math.pi, lon2 * 180.0 / math.pi);
+  // ---------------- route snapping ----------------
+  List<double> _closestOnRoute(double lat, double lng) {
+    if (route == null || route!.points.isEmpty) return [lat, lng];
+    final latRad = lat * (math.pi / 180.0);
+    final metersPerDegLat = 111132.0;
+    final metersPerDegLng = (math.cos(latRad) * 111319.0);
+    double bestDist = double.infinity;
+    double bestLat = lat;
+    double bestLng = lng;
+    for (int i = 0; i < route!.points.length - 1; i++) {
+      final a = route!.points[i];
+      final b = route!.points[i + 1];
+      final ax = a[0] * metersPerDegLat, ay = a[1] * metersPerDegLng;
+      final bx = b[0] * metersPerDegLat, by = b[1] * metersPerDegLng;
+      final px = lat * metersPerDegLat, py = lng * metersPerDegLng;
+      final vx = bx - ax, vy = by - ay;
+      final wx = px - ax, wy = py - ay;
+      final vlen2 = vx * vx + vy * vy;
+      double t = vlen2 == 0 ? 0.0 : (vx * wx + vy * wy) / vlen2;
+      t = t.clamp(0.0, 1.0);
+      final projx = ax + vx * t;
+      final projy = ay + vy * t;
+      final rlat = projx / metersPerDegLat;
+      final rlng = projy / metersPerDegLng;
+      final d = _haversineMeters(rlat, rlng, lat, lng);
+      if (d < bestDist) {
+        bestDist = d;
+        bestLat = rlat;
+        bestLng = rlng;
+      }
+    }
+    return [bestLat, bestLng];
   }
 
-  double _distanceMeters(double lat1, double lon1, double lat2, double lon2) {
+  // ---------------- math helpers ----------------
+  double _haversineMeters(double lat1, double lon1, double lat2, double lon2) {
     final R = 6371000.0;
-    final phi1 = lat1 * math.pi / 180.0;
-    final phi2 = lat2 * math.pi / 180.0;
-    final dPhi = (lat2 - lat1) * math.pi / 180.0;
-    final dLambda = (lon2 - lon1) * math.pi / 180.0;
-    final a = math.sin(dPhi / 2) * math.sin(dPhi / 2) + math.cos(phi1) * math.cos(phi2) * math.sin(dLambda / 2) * math.sin(dLambda / 2);
+    final dLat = (lat2 - lat1) * (math.pi / 180.0);
+    final dLon = (lon2 - lon1) * (math.pi / 180.0);
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1 * math.pi / 180.0) * math.cos(lat2 * math.pi / 180.0) *
+            math.sin(dLon / 2) * math.sin(dLon / 2);
     final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
     return R * c;
   }
 
-  double _lerp(double a, double b, double t) => a + (b - a) * t;
-  double _lerpAngle(double a, double b, double t) {
-    final delta = ((((b - a) + 180) % 360) - 180);
-    return (a + delta * t) % 360;
+  double _bearingBetween(double lat1, double lon1, double lat2, double lon2) {
+    final y = math.sin((lon2 - lon1) * math.pi / 180.0) * math.cos(lat2 * math.pi / 180.0);
+    final x = math.cos(lat1 * math.pi / 180.0) * math.sin(lat2 * math.pi / 180.0) -
+        math.sin(lat1 * math.pi / 180.0) * math.cos(lat2 * math.pi / 180.0) *
+            math.cos((lon2 - lon1) * math.pi / 180.0);
+    final brng = (math.atan2(y, x) * 180.0 / math.pi + 360.0) % 360.0;
+    return brng;
   }
 
-  double _calculateBearing(LatLng from, LatLng to) {
-    final lat1 = from.latitude * math.pi / 180;
-    final lon1 = from.longitude * math.pi / 180;
-    final lat2 = to.latitude * math.pi / 180;
-    final lon2 = to.longitude * math.pi / 180;
-    final dLon = lon2 - lon1;
-    final y = math.sin(dLon) * math.cos(lat2);
-    final x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
-    return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
+  List<double> _destinationPointList(double lat, double lon, double bearingDeg, double distanceMeters) {
+    final R = 6371000.0;
+    final brng = bearingDeg * (math.pi / 180.0);
+    final phi1 = lat * (math.pi / 180.0);
+    final lambda1 = lon * (math.pi / 180.0);
+    final delta = distanceMeters / R;
+    final phi2 = math.asin(math.sin(phi1) * math.cos(delta) + math.cos(phi1) * math.sin(delta) * math.cos(brng));
+    final lambda2 = lambda1 + math.atan2(math.sin(brng) * math.sin(delta) * math.cos(phi1), math.cos(delta) - math.sin(phi1) * math.sin(phi2));
+    final lat2 = phi2 * (180.0 / math.pi);
+    final lon2 = lambda2 * (180.0 / math.pi);
+    return [lat2, lon2];
   }
 
+  double _normalizeBearing(double v) {
+    var r = v % 360.0;
+    if (r < 0) r += 360.0;
+    return r;
+  }
 
+  // ---------------- public helpers ----------------
   double get currentSpeed => _currentSpeed;
   double get currentSpeedKmh => _currentSpeed * 3.6;
-  double get currentBearing => _bearing;
+  double get currentBearing => _currentBearing;
+  mb.LatLng? get displayPosition => (_animLat == null || _animLng == null) ? null : mb.LatLng(_animLat!, _animLng!);
 
-  void setUserSymbol(mb.Symbol symbol) { _userSymbol = symbol; }
-  LatLng? get displayPosition => _displayPos;
-
-  Future<void> snapTo(LatLng pos, {bool moveCamera = false}) async {
-    _displayPos = pos;
-    _targetLocation = pos;
-    _lastGpsPosition = null;
-    _lastGpsTime = null;
-    try {
-      if (_userSymbol == null && controller != null) {
-        _userSymbol = await controller!.addSymbol(SymbolOptions(geometry: pos, iconImage: 'assets/icons/marker.png'));
-      } else if (_userSymbol != null && controller != null) {
-        controller!.updateSymbolImmediate(_userSymbol!, pos);
+  Future<void> snapTo(mb.LatLng pos, {bool moveCamera = false}) async {
+    if (debug) debugPrint('[MapLogic] snapTo ${pos.latitude},${pos.longitude}');
+    _buffer.clear();
+    _animLat = pos.latitude;
+    _animLng = pos.longitude;
+    _animBearing = _animBearing ?? 0.0;
+    final animated = AnimatedLocation(latitude: _animLat!, longitude: _animLng!, bearing: _animBearing ?? 0.0, timestamp: DateTime.now());
+    if (_userSymbol == null && controller != null) {
+      try { _userSymbol = await controller!.addSymbol(mb.SymbolOptions(geometry: pos, iconImage: 'assets/icons/user_dot.png', iconSize: 0.40)); } catch (e) { if (debug) debugPrint('[MapLogic] addSymbol on snap failed: $e'); }
+    } else if (_userSymbol != null && controller != null) {
+      try {
+        final c = controller as dynamic;
+        try { await c.updateSymbolImmediate(_userSymbol!, pos); } catch (_) { try { await c.updateSymbol(_userSymbol!, mb.SymbolOptions(geometry: pos)); } catch (_) {} }
+      } catch (_) {}
+    }
+    if (moveCamera && controller != null) {
+      final c = controller as dynamic;
+      try { await c.setCamera(pos, zoom: 18.0, bearing: _animBearing ?? 0.0, ms: 200); } catch (_) {
+        try { await c.moveCamera(pos, zoom: 18.0, ms: 200); } catch (_) { try { await c.moveCameraImmediate(pos, 18.0, bearing: _animBearing ?? _currentBearing); } catch (_) {} }
       }
-      if (moveCamera && controller != null) controller!.moveCameraImmediate(pos, 19);
-    } catch (e) {}
-    try { onUpdate?.call(); } catch (e) {}
+    }
+    try { onUpdate?.call(); } catch (_) {}
+    try { if (!_outController.isClosed) _outController.add(animated); } catch (_) {}
   }
-}
+
+  void emitTestPosition(double lat, double lng, {double acc = 5.0, double? bearing}) {
+    final s = LocationSample(latitude: lat, longitude: lng, accuracy: acc, bearing: bearing, timestamp: DateTime.now(), receivedAt: DateTime.now());
+    _processIncomingSampleAndVelocity(s);
+    onLocation(s);
+    if (debug) debugPrint('[MapLogic] emitTestPosition $lat,$lng');
+  }
+
+
+  }
+

@@ -21,6 +21,9 @@ class RoutePlannerView extends StatefulWidget {
 }
 
 class _RoutePlannerViewState extends State<RoutePlannerView> {
+  // PointAnnotationManager used to add symbols above line layers
+  dynamic _pointManager; // will be set to the platform-specific PointAnnotationManager
+
   static const String _mapboxToken = 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg';
   bool _loading = true;
   String? _error;

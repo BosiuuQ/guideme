@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 import 'package:guide_me/features/wydarzenia/backend/events_backend.dart';
 import 'package:guide_me/features/wydarzenia/models/event_model.dart';
 import 'event_details_view.dart';
-import 'package:flutter/scheduler.dart';
 
 class EventsView extends StatefulWidget {
   const EventsView({super.key});

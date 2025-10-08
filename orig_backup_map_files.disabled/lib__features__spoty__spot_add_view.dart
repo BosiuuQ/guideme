@@ -16,6 +16,9 @@ class SpotAddView extends StatefulWidget {
 }
 
 class _SpotAddViewState extends State<SpotAddView> {
+  // PointAnnotationManager used to add symbols above line layers
+  dynamic _pointManager; // will be set to the platform-specific PointAnnotationManager
+
   final _formKey = GlobalKey<FormState>();
   final TextEditingController titleCtrl = TextEditingController();
   final TextEditingController descCtrl = TextEditingController();

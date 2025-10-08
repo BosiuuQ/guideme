@@ -28,6 +28,9 @@ class ActiveNavigationView extends StatefulWidget {
 }
 
 class _ActiveNavigationViewState extends State<ActiveNavigationView> {
+  // PointAnnotationManager used to add symbols above line layers
+  dynamic _pointManager; // will be set to the platform-specific PointAnnotationManager
+
   bool _arrivalShown = false;
 
 

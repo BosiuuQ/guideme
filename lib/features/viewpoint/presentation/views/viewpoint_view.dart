@@ -18,7 +18,7 @@ class ViewpointView extends StatefulWidget {
 }
 
 class _ViewpointViewState extends State<ViewpointView> {
-  late Future<List<Viewpoint>> _futureViewpoints;
+  Future<List<Viewpoint>>? _futureViewpoints;
   List<Viewpoint> _allViewpoints = [];
   String _searchQuery = "";
   String _selectedFilter = 'najnowsze';
@@ -94,7 +94,7 @@ class _ViewpointViewState extends State<ViewpointView> {
     if (_searchQuery.isEmpty) return viewpoints;
     final q = _searchQuery.toLowerCase();
     return viewpoints.where((v) =>
-        v.title.toLowerCase().contains(q) || v.description.toLowerCase().contains(q)).toList();
+    v.title.toLowerCase().contains(q) || v.description.toLowerCase().contains(q)).toList();
   }
 
   void _onSearchChanged(String query) {
@@ -150,7 +150,9 @@ class _ViewpointViewState extends State<ViewpointView> {
         children: [
           _buildFilterBar(),
           Expanded(
-            child: FutureBuilder<List<Viewpoint>>(
+            child: _futureViewpoints == null
+                ? const Center(child: CircularProgressIndicator(color: Colors.white))
+                : FutureBuilder<List<Viewpoint>>(
               future: _futureViewpoints,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {

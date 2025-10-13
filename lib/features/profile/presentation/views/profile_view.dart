@@ -31,6 +31,22 @@ class _ProfileViewState extends State<ProfileView> {
   bool _isFriend = false; // <-- DODANE
   double currentKm = 0;
 
+  String _formatRole(String? role) {
+    if (role == null) return 'User';
+    switch (role.toLowerCase()) {
+      case 'ceo':
+        return 'CEO';
+      case 'administrator':
+        return 'Administrator';
+      case 'moderator':
+        return 'Moderator';
+      case 'premium':
+        return 'Premium';
+      default:
+        return 'User';
+    }
+  }
+
   Future<void> _checkFriendRequestStatus() async {
     final result = await ZnajomiBackend.isFriendRequestSent(widget.userId!);
     setState(() {
@@ -174,6 +190,7 @@ class _ProfileViewState extends State<ProfileView> {
                     final description = data['description'] ?? "Brak opisu profilu";
                     final level = data['account_lvl']?.toString() ?? "0";
                     final avatarUrl = data['avatar'] ?? "";
+                    final role = _formatRole(data['role']);
 
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
@@ -183,14 +200,14 @@ class _ProfileViewState extends State<ProfileView> {
                           GestureDetector(
                             onTap: isOwnProfile
                                 ? () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => LevelView(
-                                          currentLevel: int.tryParse(level) ?? 1,
-                                        ),
-                                      ),
-                                    );
-                                  }
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => LevelView(
+                                    currentLevel: int.tryParse(level) ?? 1,
+                                  ),
+                                ),
+                              );
+                            }
                                 : null, // <-- WYŁĄCZONE KLIKANIE NA CUDZYM PROFILU
                             child: SizedBox(
                               height: 100,
@@ -206,6 +223,11 @@ class _ProfileViewState extends State<ProfileView> {
                                 Text(
                                   nickname,
                                   style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  role,
+                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.cyanAccent),
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
@@ -268,66 +290,66 @@ class _ProfileViewState extends State<ProfileView> {
         bottomNavigationBar: isOwnProfile
             ? null
             : Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () => _showReportDialog(context),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.redAccent,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        icon: const Icon(Icons.flag),
-                        label: const Text("Zgłoś"),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: isLoadingRequestStatus
-                          ? const Center(child: CircularProgressIndicator())
-                          : ElevatedButton.icon(
-                              onPressed: _isFriend
-                                  ? _removeFriend
-                                  : (isRequestSent ? null : _sendFriendRequest),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _isFriend
-                                    ? Colors.redAccent
-                                    : (isRequestSent ? Colors.grey : AppColors.blue),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                              icon: Icon(_isFriend
-                                  ? Icons.person_remove
-                                  : (isRequestSent ? Icons.hourglass_top : Icons.person_add_alt_1)),
-                              label: Text(_isFriend
-                                  ? "Usuń znajomego"
-                                  : (isRequestSent ? "Zaproszenie oczekuje" : "Dodaj do znajomych")),
-                            ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: _handleGarageAccess,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white12,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        icon: const Icon(Icons.directions_car),
-                        label: const Text("Wejdź do garażu"),
-                      ),
-                    ),
-                  ],
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _showReportDialog(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.flag),
+                  label: const Text("Zgłoś"),
                 ),
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: isLoadingRequestStatus
+                    ? const Center(child: CircularProgressIndicator())
+                    : ElevatedButton.icon(
+                  onPressed: _isFriend
+                      ? _removeFriend
+                      : (isRequestSent ? null : _sendFriendRequest),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isFriend
+                        ? Colors.redAccent
+                        : (isRequestSent ? Colors.grey : AppColors.blue),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: Icon(_isFriend
+                      ? Icons.person_remove
+                      : (isRequestSent ? Icons.hourglass_top : Icons.person_add_alt_1)),
+                  label: Text(_isFriend
+                      ? "Usuń znajomego"
+                      : (isRequestSent ? "Zaproszenie oczekuje" : "Dodaj do znajomych")),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _handleGarageAccess,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white12,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: const Icon(Icons.directions_car),
+                  label: const Text("Wejdź do garażu"),
+                ),
+              ),
+            ],
+          ),
+        ),
         floatingActionButton: isOwnProfile
             ? FloatingActionButton(
-                backgroundColor: AppColors.blue,
-                onPressed: () => _showAddOptions(context),
-                child: const Icon(Icons.add),
-              )
+          backgroundColor: AppColors.blue,
+          onPressed: () => _showAddOptions(context),
+          child: const Icon(Icons.add),
+        )
             : null,
       ),
     );

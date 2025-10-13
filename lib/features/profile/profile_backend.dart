@@ -16,7 +16,7 @@ class ProfileBackend {
 
     final data = await _client
         .from('users')
-        .select('nickname, description, account_lvl, avatar')
+        .select('nickname, description, account_lvl, avatar, role')
         .eq('id', targetUserId)
         .maybeSingle();
 

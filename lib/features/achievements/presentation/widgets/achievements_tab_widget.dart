@@ -3,7 +3,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:guide_me/features/achievements/presentation/widgets/achievement_card_widget.dart';
 
 class AchievementsTabWidget extends StatefulWidget {
-  const AchievementsTabWidget({super.key});
+  const AchievementsTabWidget({
+    super.key,
+    this.userId,
+  });
+
+  /// Gdy podasz userId – pokaże osiągnięcia tego użytkownika (np. na cudzym profilu).
+  /// Gdy null – użyje aktualnie zalogowanego.
+  final String? userId;
 
   @override
   State<AchievementsTabWidget> createState() => _AchievementsTabWidgetState();
@@ -24,43 +31,65 @@ class _AchievementsTabWidgetState extends State<AchievementsTabWidget>
   }
 
   Future<void> _loadAll() async {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId == null) return;
+    try {
+      final client = Supabase.instance.client;
+      final userId = widget.userId ?? client.auth.currentUser?.id;
 
-    final client = Supabase.instance.client;
+      if (userId == null) {
+        setState(() => loading = false);
+        return;
+      }
 
-    final distanceRes = await client
-        .from('user_distance')
-        .select('total_km')
-        .eq('user_id', userId)
-        .maybeSingle();
+      // Suma km
+      final distanceRes = await client
+          .from('user_distance')
+          .select('total_km')
+          .eq('user_id', userId)
+          .maybeSingle();
 
-    final unlockedRes = await client
-        .from('user_achievements')
-        .select('achievement_id')
-        .eq('user_id', userId);
+      totalKm = ((distanceRes?['total_km']) as num?)?.toDouble() ?? 0.0;
 
-    final unlockedIds = Set<String>.from(unlockedRes.map((e) => e['achievement_id']));
+      // Odblokowane osiągnięcia
+      final unlockedRes = await client
+          .from('user_achievements')
+          .select('achievement_id')
+          .eq('user_id', userId);
 
-    totalKm = (distanceRes?['total_km'] ?? 0).toDouble();
+      final unlockedIds = (unlockedRes as List)
+          .map((e) => e['achievement_id'])
+          .whereType<String>()
+          .toSet();
 
-    final kmList = await client
-        .from('achievements_km')
-        .select()
-        .order('required_km', ascending: true);
+      // Lista progów KM
+      final kmList = await client
+          .from('achievements_km')
+          .select()
+          .order('required_km', ascending: true);
 
-    _assignCurrentAndNext(kmList, unlockedIds, totalKm, (current, next) {
-      currentKm = current;
-      nextKm = next;
-    });
-
-    setState(() {
-      loading = false;
-    });
+      _assignCurrentAndNext(
+        kmList as List<dynamic>,
+        unlockedIds,
+        totalKm,
+        (current, next) {
+          currentKm = current;
+          nextKm = next;
+        },
+      );
+    } catch (e) {
+      // ewentualnie możesz dodać log/Toast
+    } finally {
+      if (mounted) {
+        setState(() => loading = false);
+      }
+    }
   }
 
-  void _assignCurrentAndNext(List<dynamic> list, Set<String> unlockedIds, double total,
-      void Function(Map<String, dynamic>?, Map<String, dynamic>?) callback) {
+  void _assignCurrentAndNext(
+    List<dynamic> list,
+    Set<String> unlockedIds,
+    double total,
+    void Function(Map<String, dynamic>?, Map<String, dynamic>?) callback,
+  ) {
     final all = List<Map<String, dynamic>>.from(list);
 
     Map<String, dynamic>? current;
@@ -68,8 +97,13 @@ class _AchievementsTabWidgetState extends State<AchievementsTabWidget>
 
     for (var i = 0; i < all.length; i++) {
       final ach = all[i];
-      final required = (ach['required_km'] ?? ach['required_posts'] ?? ach['required_points']) as num;
-      if (total >= required) {
+      final requiredNum = ((ach['required_km'] ??
+                  ach['required_posts'] ??
+                  ach['required_points']) as num?)
+              ?.toDouble() ??
+          0.0;
+
+      if (total >= requiredNum) {
         current = ach;
         next = i + 1 < all.length ? all[i + 1] : null;
       } else {
@@ -87,7 +121,8 @@ class _AchievementsTabWidgetState extends State<AchievementsTabWidget>
     required double value,
     required Icon icon,
   }) {
-    final requiredKm = ((next ?? current)?['required_km'] as num?)?.toDouble() ?? 1;
+    final requiredKm =
+        ((next ?? current)?['required_km'] as num?)?.toDouble() ?? 1.0;
     final remaining = (requiredKm - value).clamp(0, requiredKm);
     final percent = (value / requiredKm).clamp(0.0, 1.0);
 
@@ -95,7 +130,8 @@ class _AchievementsTabWidgetState extends State<AchievementsTabWidget>
       context: context,
       builder: (context) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           backgroundColor: const Color(0xFF1C1F26),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
@@ -115,7 +151,11 @@ class _AchievementsTabWidgetState extends State<AchievementsTabWidget>
                 Text(
                   current?['title'] ?? next?['title'] ?? "Brak osiągnięcia",
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -129,7 +169,8 @@ class _AchievementsTabWidgetState extends State<AchievementsTabWidget>
                   backgroundColor: Colors.grey[800],
                   color: Colors.blueAccent,
                   minHeight: 6,
-                  borderRadius: BorderRadius.circular(10),
+                  // jeśli masz Flutter z borderRadius w LPI – ok; jeśli nie, usuń poniższą linię:
+                  // borderRadius: BorderRadius.circular(10),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -138,11 +179,14 @@ class _AchievementsTabWidgetState extends State<AchievementsTabWidget>
                 ),
                 const SizedBox(height: 16),
                 if (next != null) ...[
-                  Text("Kolejny poziom: ${next['title']}", style: const TextStyle(color: Colors.white)),
+                  Text("Kolejny poziom: ${next['title']}",
+                      style: const TextStyle(color: Colors.white)),
                   const SizedBox(height: 4),
-                  Text("Brakuje ci jeszcze ${remaining.toStringAsFixed(2)} km",
-                      style: const TextStyle(color: Colors.white38)),
-                ]
+                  Text(
+                    "Brakuje ci jeszcze ${remaining.toStringAsFixed(2)} km",
+                    style: const TextStyle(color: Colors.white38),
+                  ),
+                ],
               ],
             ),
           ),

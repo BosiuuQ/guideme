@@ -1,0 +1,262 @@
+
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:uuid/uuid.dart';
+import 'package:guide_me/lib/features/spoty/spoty_backend.dart' as backend;
+import 'package:guide_me/mapbox_shim.dart' as mb;
+import 'package:go_router/go_router.dart';
+
+class SpotAddView extends StatefulWidget {
+  const SpotAddView({super.key});
+
+  @override
+  State<SpotAddView> createState() => _SpotAddViewState();
+}
+
+class _SpotAddViewState extends State<SpotAddView> {
+  final _formKey = GlobalKey<FormState>();
+  final supabase = Supabase.instance.client;
+  final ImagePicker _picker = ImagePicker();
+
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _descController = TextEditingController();
+  String _visibility = "public";
+  String _type = "community"; // or 'official'
+
+  List<File> _images = [];
+  bool isSubmitting = false;
+
+  mb.LatLng? _pickedLocation;
+  mb.Symbol? _locationSymbol;
+  mb.MapboxMapController? _mapController;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _descController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImages() async {
+    // allow picking multiple one by one up to 5
+    if (_images.length >= 5) return;
+    final XFile? picked = await _picker.pickImage(source: ImageSource.gallery, maxWidth: 2048, maxHeight: 2048);
+    if (picked == null) return;
+    setState(() {
+      _images.add(File(picked.path));
+    });
+  }
+
+  Future<String?> _uploadImage(File file) async {
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) return null;
+      final fileName = 'spot_${Uuid().v4()}_${DateTime.now().millisecondsSinceEpoch}.png';
+      final bytes = await file.readAsBytes();
+      await supabase.storage.from('instaguide').uploadBinary(fileName, bytes);
+      final publicUrl = supabase.storage.from('instaguide').getPublicUrl(fileName);
+      return publicUrl;
+    } catch (e) {
+      debugPrint("Upload error: \$e");
+      return null;
+    }
+  }
+
+  Future<void> _useMyLocation() async {
+    try {
+      final permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) return;
+      final position = await Geolocator.getCurrentPosition();
+      final latlng = mb.LatLng(position.latitude, position.longitude);
+      setState(() {
+        _pickedLocation = latlng;
+      });
+      if (_mapController != null) {
+        if (_locationSymbol == null) {
+          _locationSymbol = await _mapController!.addSymbol(mb.SymbolOptions(geometry: latlng, iconImage: 'assets/icons/marker.png', iconSize: 0.12));
+        } else {
+          await _mapController!.updateSymbolImmediate(_locationSymbol!, latlng);
+        }
+        await _mapController!.moveCameraImmediate(latlng, 14.0);
+      }
+    } catch (e) {
+      debugPrint('Error getting location: \$e');
+    }
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_images.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wybierz co najmniej jedno zdjęcie')));
+      return;
+    }
+    if (_pickedLocation == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wskaż lokalizację na mapie')));
+      return;
+    }
+
+    setState(() => isSubmitting = true);
+    try {
+      // upload first image as main image (others can be handled later)
+      final uploaded = await _uploadImage(_images.first);
+      if (uploaded == null) throw Exception("Nie udało się przesłać zdjęcia");
+
+      final success = await backend.SpotyBackend.addSpot(
+        tytul: _nameController.text.trim(),
+        opis: _descController.text.trim(),
+        lokalizacja: '${_pickedLocation!.latitude},${_pickedLocation!.longitude}',
+        lat: _pickedLocation!.latitude,
+        lng: _pickedLocation!.longitude,
+        widocznosc: _visibility,
+        data: DateTime.now(),
+        czasTrwania: const Duration(hours: 2),
+        typ: _type,
+        zasady: '',
+        zdjecieUrl: uploaded,
+      );
+
+      if (success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Spot dodany')));
+          context.pop();
+        }
+      } else {
+        throw Exception("Błąd podczas tworzenia spotu");
+      }
+    } catch (e) {
+      debugPrint("Submit error: \$e");
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd: \$e')));
+    } finally {
+      if (mounted) setState(() => isSubmitting = false);
+    }
+  }
+
+  Widget _buildField(TextEditingController ctrl, String label, {int maxLines = 1}) {
+    return TextFormField(
+      controller: ctrl,
+      maxLines: maxLines,
+      style: const TextStyle(color: Colors.white),
+      validator: (v) => (v == null || v.trim().isEmpty) ? 'Pole wymagane' : null,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.white70),
+        filled: true,
+        fillColor: Colors.grey[900],
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: const Text("Dodaj spot", style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            children: [
+              _buildField(_nameController, "Nazwa spotu"),
+              const SizedBox(height: 12),
+              Text("Lokalizacja", style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 220,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: mb.MapboxMap(
+                    accessToken: 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg',
+                    initialCameraPosition: mb.CameraPosition(target: mb.LatLng(52.2297, 21.0122), zoom: 13),
+                    styleUri: 'mapbox://styles/bosiuuq/cmgf5xezs00i701sec30chpp0',
+                    onMapCreated: (controller) {
+                      _mapController = controller;
+                    },
+                    onTap: (latlng) async {
+                      setState(() {
+                        _pickedLocation = latlng;
+                      });
+                      if (_mapController != null) {
+                        if (_locationSymbol == null) {
+                          _locationSymbol = await _mapController!.addSymbol(mb.SymbolOptions(geometry: latlng, iconImage: 'assets/icons/dest_pin.png', iconSize: 0.18));
+                        } else {
+                          await _mapController!.updateSymbolImmediate(_locationSymbol!, latlng);
+                        }
+                      }
+                    },
+                    myLocationEnabled: false,
+                    trackCameraPosition: true,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  ElevatedButton(onPressed: _useMyLocation, child: const Text('Użyj mojej pozycji')),
+                  const SizedBox(width: 12),
+                  if (_pickedLocation != null) Text('Wybrano: ${_pickedLocation!.latitude.toStringAsFixed(5)}, ${_pickedLocation!.longitude.toStringAsFixed(5)}', style: const TextStyle(color: Colors.white70)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _buildField(_descController, "Opis spotu", maxLines: 4),
+              const SizedBox(height: 12),
+              Text("Zdjęcia (1-5)", style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 96,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    for (final img in _images) Padding(
+                      padding: const EdgeInsets.only(right:8.0),
+                      child: ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(img, width: 96, height: 96, fit: BoxFit.cover)),
+                    ),
+                    if (_images.length < 5)
+                      InkWell(
+                        onTap: _pickImages,
+                        child: Container(
+                          width: 96,
+                          height: 96,
+                          decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.white24)),
+                          child: const Center(child: Icon(Icons.add, color: Colors.white)),
+                        ),
+                      )
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _type,
+                items: const [
+                  DropdownMenuItem(value: 'official', child: Text('Oficjalny')),
+                  DropdownMenuItem(value: 'community', child: Text('Społecznościowy')),
+                ],
+                onChanged: (v) => setState(() => _type = v ?? 'community'),
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: Colors.grey[900],
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                ),
+              ),
+              const SizedBox(height: 18),
+              ElevatedButton(
+                onPressed: isSubmitting ? null : _submit,
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent, foregroundColor: Colors.black),
+                child: isSubmitting ? const CircularProgressIndicator() : const Text('Dodaj spot'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

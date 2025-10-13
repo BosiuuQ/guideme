@@ -1,0 +1,366 @@
+import 'dart:async';
+import 'dart:math' as math;
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:guide_me/mapbox_shim.dart' as mb;
+import 'package:guide_me/mapbox_shim.dart';
+import 'package:geolocator/geolocator.dart';
+import 'dart:io';
+import 'dart:convert';
+
+
+
+class MapLogicHandler {
+  VoidCallback? onUpdate;
+  TickerProvider? tickerProvider;
+
+  mb.MapboxMapController? controller;
+  mb.Symbol? _userSymbol;
+
+  Position? _lastGpsPosition;
+  DateTime? _lastGpsTime;
+
+
+  /// Map Matching / Snap-to-road configuration
+  /// Set this to your Mapbox access token to enable snapping.
+  /// If null or empty, snapping will be disabled.
+  String? mapboxAccessToken;
+
+  /// Max allowed snapping distance in meters. If the snapped point is further
+  /// than this from the raw GPS, we will ignore it.
+  double mapMatchingMaxDistanceMeters = 20.0;
+
+  /// You can call this to set the Mapbox token at runtime.
+  void setMapboxAccessToken(String token) {
+    mapboxAccessToken = token;
+  }
+
+  /// Try to map-match the provided (previous, current) positions using Mapbox
+  /// Map Matching API. Returns a LatLng of the snapped current point, or null.
+  Future<LatLng?> _mapMatchWithMapbox(Position? prev, Position cur) async {
+    try {
+      if (mapboxAccessToken == null || mapboxAccessToken!.isEmpty) return null;
+      if (prev == null) return null; // Map Matching works best with >=2 points.
+      final coords = '\${prev.longitude},\${prev.latitude};\${cur.longitude},\${cur.latitude}';
+      final url = Uri.https('api.mapbox.com', '/matching/v5/mapbox/driving/\$coords', {
+        'access_token': mapboxAccessToken!,
+        'geometries': 'geojson',
+        'radiuses': '25;25', // allow small radius for both points
+        'overview': 'simplified',
+      });
+
+      final httpClient = HttpClient();
+      httpClient.badCertificateCallback = (X509Certificate cert, String host, int port) => false;
+      final req = await httpClient.getUrl(url);
+      final resp = await req.close();
+      if (resp.statusCode != 200) {
+        // ignore on failure
+        await resp.drain();
+        httpClient.close();
+        return null;
+      }
+      final body = await resp.transform(utf8.decoder).join();
+      httpClient.close();
+      final Map<String, dynamic> data = json.decode(body);
+      // Mapbox returns 'tracepoints' array of same length as input coordinates.
+      if (data['tracepoints'] is List) {
+        final tracepoints = data['tracepoints'] as List;
+        if (tracepoints.length >= 2) {
+          final tp = tracepoints[1]; // second input point -> current pos
+          if (tp != null && tp['location'] is List) {
+            final loc = tp['location'] as List;
+            final snappedLon = (loc[0] as num).toDouble();
+            final snappedLat = (loc[1] as num).toDouble();
+            return LatLng(snappedLat, snappedLon);
+          }
+        }
+      }
+      return null;
+    } catch (e) {
+      // silently ignore errors to avoid breaking existing animation logic
+      return null;
+    }
+  }
+
+  double _distanceMetersBetweenLatLngs(double lat1, double lon1, double lat2, double lon2) {
+    const R = 6371000.0; // meters
+    final phi1 = lat1 * (math.pi / 180.0);
+    final phi2 = lat2 * (math.pi / 180.0);
+    final dphi = (lat2 - lat1) * (math.pi / 180.0);
+    final dlambda = (lon2 - lon1) * (math.pi / 180.0);
+    final a = math.sin(dphi/2) * math.sin(dphi/2) +
+              math.cos(phi1) * math.cos(phi2) *
+              math.sin(dlambda/2) * math.sin(dlambda/2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a));
+    return R * c;
+  }
+
+  /// Decide whether to snap and, if so, update _targetLocation to the snapped point.
+  /// This is intentionally async and non-blocking: we keep the existing _targetLocation
+  /// behavior and override it later if snapping succeeds and is within threshold.
+  
+  /// Attempt to map-match immediately (with a short timeout) and apply the snapped position
+  /// if it's within the allowed distance. This function awaits the Map Matching result
+  /// but uses a short timeout so it doesn't hang the app for long.
+  Future<void> _maybeApplyMapMatchBlocking(Position pos) async {
+    try {
+      final fut = _mapMatchWithMapbox(_lastGpsPosition, pos);
+      // limit waiting time to 800ms
+      final snapped = await fut.timeout(const Duration(milliseconds: 800), onTimeout: () => null);
+      if (snapped == null) {
+        // no snap result -- leave raw GPS as target
+        _targetLocation = LatLng(pos.latitude, pos.longitude);
+        return;
+      }
+      final dist = _distanceMetersBetweenLatLngs(pos.latitude, pos.longitude, snapped.latitude, snapped.longitude);
+      if (dist <= mapMatchingMaxDistanceMeters) {
+        _targetLocation = snapped;
+        // Also update display position and symbol immediately so cursor appears on road.
+        _displayPos = snapped;
+        try {
+          if (_userSymbol == null && controller != null) {
+            controller!.addSymbol(SymbolOptions(geometry: _displayPos!, iconImage: 'assets/icons/user_dot.png', iconSize: 0.40)).then((sym) {
+              _userSymbol = sym;
+            }).catchError((e) {});
+          } else if (_userSymbol != null && controller != null) {
+            controller!.updateSymbolImmediate(_userSymbol!, _displayPos!);
+          }
+        } catch (e) {}
+        try { onUpdate?.call(); } catch (e) {}
+      } else {
+        // snapped too far - keep raw GPS point
+        _targetLocation = LatLng(pos.latitude, pos.longitude);
+      }
+    } catch (e) {
+      // fallback to raw GPS
+      _targetLocation = LatLng(pos.latitude, pos.longitude);
+    }
+  }
+      }
+    }).catchError((_) {});
+  }
+
+
+  LatLng? _displayPos;
+  LatLng? _targetLocation;
+  double _bearing = 0.0;
+  double _currentSpeed = 0.0;
+  double _cameraBearing = 0.0;
+
+  final double _speedAlpha = 0.25;
+  final double _bearingAlpha = 0.12;
+  final double _correctionPerSecond = 1.0;
+  final double _maxCorrectionFactor = 2.0;
+  final double _minSpeedForBearing = 0.1;
+
+  // Ticker
+  Ticker? _ticker;
+  DateTime? _lastTick;
+  StreamSubscription<Position>? _posSub;
+
+  MapLogicHandler({this.onUpdate, this.tickerProvider});
+
+  Future<void> onMapCreated(mb.MapboxMapController ctrl) async {
+    controller = ctrl;
+    try {
+      if (tickerProvider != null) {
+        _ticker = tickerProvider!.createTicker(_onTick);
+        _ticker!.start();
+      }
+    } catch (e) {}
+    _initLocationListening();
+  }
+
+  Future<void> dispose() async {
+    await _posSub?.cancel();
+    _ticker?.stop();
+    _ticker?.dispose();
+    _ticker = null;
+  }
+
+  Future<void> _initLocationListening() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        return;
+      }
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+        return;
+      }
+
+      try {
+        final p = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
+        _onNewGps(p);
+      } catch (e) {}
+
+      _posSub = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.best, distanceFilter: 0),
+      ).listen((pos) {
+        _onNewGps(pos);
+      });
+    } catch (e) {}
+    _ticker?.start();
+  }
+
+  Future<void> _onNewGps(Position pos) async {
+    final now = DateTime.now();
+    double measuredSpeed = pos.speed != null && pos.speed!.isFinite ? pos.speed! : 0.0;
+    if (_lastGpsPosition != null && _lastGpsTime != null) {
+      final dt = now.difference(_lastGpsTime!).inMilliseconds / 1000.0;
+      if (dt > 0) {
+        final meters = _distanceMeters(_lastGpsPosition!.latitude, _lastGpsPosition!.longitude, pos.latitude, pos.longitude);
+        final calcSpeed = meters / dt;
+        if (measuredSpeed <= 0.01) measuredSpeed = calcSpeed;
+      }
+    }
+
+    _currentSpeed = (_speedAlpha * measuredSpeed) + ((1 - _speedAlpha) * _currentSpeed);
+
+        // Attempt map-matching synchronously (short timeout) so cursor is placed on road if within threshold.
+    await _maybeApplyMapMatchBlocking(pos);
+
+
+    if (_lastGpsPosition != null) {
+      final bearingNow = _calculateBearing(LatLng(_lastGpsPosition!.latitude, _lastGpsPosition!.longitude), _targetLocation!);
+      if (_currentSpeed > _minSpeedForBearing) {
+        _bearing = bearingNow;
+      }
+    }
+
+    if (_displayPos == null) {
+      _displayPos = LatLng(pos.latitude, pos.longitude);
+      try {
+        if (_userSymbol == null && controller != null) {
+          controller!.addSymbol(SymbolOptions(geometry: _displayPos!, iconImage: 'assets/icons/profile_icon.png', iconSize: 0.40)).then((sym) {
+            _userSymbol = sym;
+          }).catchError((e) {});
+        } else if (_userSymbol != null && controller != null) {
+          controller!.updateSymbolImmediate(_userSymbol!, _displayPos!);
+        }
+        if (controller != null) controller!.moveCameraImmediate(_displayPos!, 19, bearing: _animBearing ?? _currentBearing);
+      } catch (e) {}
+    }
+
+    _lastGpsPosition = pos;
+    _lastGpsTime = now;
+
+    // ensure immediate UI update
+    try { onUpdate?.call(); } catch (e) {}
+  }
+
+  void _onTick(Duration elapsed) {
+    final now = DateTime.now();
+    if (_lastTick == null) {
+      _lastTick = now;
+      return;
+    }
+    final dt = now.difference(_lastTick!).inMilliseconds / 1000.0;
+    _lastTick = now;
+    if (dt <= 0) return;
+
+    if (_displayPos == null) return;
+
+    if (_currentSpeed > 0.001) {
+      final moveMeters = _currentSpeed * dt;
+      _displayPos = _destinationPoint(_displayPos!, _bearing, moveMeters);
+    }
+
+    if (_targetLocation != null) {
+      final distToTarget = _distanceMeters(_displayPos!.latitude, _displayPos!.longitude, _targetLocation!.latitude, _targetLocation!.longitude);
+      if (distToTarget > 0.01) {
+        double corrSpeed = (_correctionPerSecond * (distToTarget / 5.0)).clamp(0.0, _maxCorrectionFactor);
+        final corrMeters = corrSpeed * dt;
+        if (corrMeters >= distToTarget) {
+          _displayPos = _targetLocation;
+        } else {
+          final corrBearing = _calculateBearing(_displayPos!, _targetLocation!);
+          _displayPos = _destinationPoint(_displayPos!, corrBearing, corrMeters);
+        }
+      }
+    }
+
+    if (_currentSpeed > _minSpeedForBearing) {
+      _cameraBearing = _lerpAngle(_cameraBearing, _bearing, _bearingAlpha);
+    } else {
+      _cameraBearing = _lerpAngle(_cameraBearing, 0.0, _bearingAlpha);
+    }
+
+    try {
+      if (_userSymbol != null && controller != null && _displayPos != null) {
+        controller!.updateSymbolImmediate(_userSymbol!, _displayPos!);
+        controller!.moveCameraImmediate(_displayPos!, 19, bearing: _animBearing ?? _currentBearing);
+      }
+    } catch (e) {}
+
+    try { onUpdate?.call(); } catch (e) {}
+
+  }
+
+
+  LatLng _destinationPoint(LatLng from, double bearingDeg, double distanceMeters) {
+    final double R = 6371000.0;
+    final double brng = bearingDeg * math.pi / 180.0;
+    final double lat1 = from.latitude * math.pi / 180.0;
+    final double lon1 = from.longitude * math.pi / 180.0;
+    final double dDivR = distanceMeters / R;
+    final double lat2 = math.asin(math.sin(lat1) * math.cos(dDivR) + math.cos(lat1) * math.sin(dDivR) * math.cos(brng));
+    final double lon2 = lon1 + math.atan2(math.sin(brng) * math.sin(dDivR) * math.cos(lat1), math.cos(dDivR) - math.sin(lat1) * math.sin(lat2));
+    return LatLng(lat2 * 180.0 / math.pi, lon2 * 180.0 / math.pi);
+  }
+
+  double _distanceMeters(double lat1, double lon1, double lat2, double lon2) {
+    final R = 6371000.0;
+    final phi1 = lat1 * math.pi / 180.0;
+    final phi2 = lat2 * math.pi / 180.0;
+    final dPhi = (lat2 - lat1) * math.pi / 180.0;
+    final dLambda = (lon2 - lon1) * math.pi / 180.0;
+    final a = math.sin(dPhi / 2) * math.sin(dPhi / 2) + math.cos(phi1) * math.cos(phi2) * math.sin(dLambda / 2) * math.sin(dLambda / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return R * c;
+  }
+
+  double _lerp(double a, double b, double t) => a + (b - a) * t;
+  double _lerpAngle(double a, double b, double t) {
+    final delta = ((((b - a) + 180) % 360) - 180);
+    return (a + delta * t) % 360;
+  }
+
+  double _calculateBearing(LatLng from, LatLng to) {
+    final lat1 = from.latitude * math.pi / 180;
+    final lon1 = from.longitude * math.pi / 180;
+    final lat2 = to.latitude * math.pi / 180;
+    final lon2 = to.longitude * math.pi / 180;
+    final dLon = lon2 - lon1;
+    final y = math.sin(dLon) * math.cos(lat2);
+    final x = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
+    return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
+  }
+
+
+  double get currentSpeed => _currentSpeed;
+  double get currentSpeedKmh => _currentSpeed * 3.6;
+  double get currentBearing => _bearing;
+
+  void setUserSymbol(mb.Symbol symbol) { _userSymbol = symbol; }
+  LatLng? get displayPosition => _displayPos;
+
+  Future<void> snapTo(LatLng pos, {bool moveCamera = false}) async {
+    _displayPos = pos;
+    _targetLocation = pos;
+    _lastGpsPosition = null;
+    _lastGpsTime = null;
+    try {
+      if (_userSymbol == null && controller != null) {
+        _userSymbol = await controller!.addSymbol(SymbolOptions(geometry: pos, iconImage: 'assets/icons/profile_icon.png'));
+      } else if (_userSymbol != null && controller != null) {
+        controller!.updateSymbolImmediate(_userSymbol!, pos);
+      }
+      if (moveCamera && controller != null) controller!.moveCameraImmediate(pos, 19, bearing: null);
+    } catch (e) {}
+    try { onUpdate?.call(); } catch (e) {}
+  }
+}

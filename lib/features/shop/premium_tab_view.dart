@@ -30,12 +30,8 @@ class PremiumTabView extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   const Text(
-                    '• Dostęp do czatu premium\n'
-                    '• Więcej miejsca w garażu\n'
-                    '• Brak limitów\n'
-                    '• Brak reklam\n'
-                    '• Ekskluzywne wydarzenia\n'
-                    '• Większe benefity w klubach',
+                    '• Konto Premium\n'
+                    '• S00N',
                     textAlign: TextAlign.center,
                     style: TextStyle(color: Colors.white70),
                   ),

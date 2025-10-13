@@ -1,0 +1,409 @@
+
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:uuid/uuid.dart';
+import 'package:guide_me/features/spoty/spoty_backend.dart' as backend;
+import 'package:guide_me/mapbox_shim.dart' as mb;
+import 'package:go_router/go_router.dart';
+
+class SpotAddView extends StatefulWidget {
+  const SpotAddView({super.key});
+
+  @override
+  State<SpotAddView> createState() => _SpotAddViewState();
+}
+
+class _SpotAddViewState extends State<SpotAddView> {
+  final _formKey = GlobalKey<FormState>();
+  final supabase = Supabase.instance.client;
+  final ImagePicker _picker = ImagePicker();
+
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _descController = TextEditingController();
+  String _visibility = "public";
+  String _type = "community"; // 'official' or 'community'
+
+  List<File> _images = [];
+  bool isSubmitting = false;
+
+  mb.LatLng? _pickedLocation;
+  mb.Symbol? _locationSymbol;
+  mb.MapboxMapController? _mapController;
+
+  // helper used to allow map interaction while inside ListView
+  bool _listScrollable = true;
+
+  // optional: store current device location for centering maps
+  mb.LatLng? _currentLatLng;
+
+  @override
+  void initState() {
+    super.initState();
+    _getCurrentLocation();
+  }
+
+  Future<void> _getCurrentLocation() async {
+    try {
+      final permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) return;
+      final pos = await Geolocator.getCurrentPosition();
+      setState(() {
+        _currentLatLng = mb.LatLng(pos.latitude, pos.longitude);
+      });
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _descController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickImages() async {
+    if (_images.length >= 5) return;
+    final XFile? picked = await _picker.pickImage(source: ImageSource.gallery, maxWidth: 2048, maxHeight: 2048);
+    if (picked == null) return;
+    setState(() => _images.add(File(picked.path)));
+  }
+
+  Future<String?> _uploadImage(File file) async {
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) return null;
+      final fileName = 'spot_${const Uuid().v4()}_${DateTime.now().millisecondsSinceEpoch}.png';
+      final bytes = await file.readAsBytes();
+      await supabase.storage.from('instaguide').uploadBinary(fileName, bytes);
+      final publicUrl = supabase.storage.from('instaguide').getPublicUrl(fileName);
+      return publicUrl;
+    } catch (e) {
+      debugPrint("Upload error: $e");
+      return null;
+    }
+  }
+
+  Future<void> _useMyLocation() async {
+    try {
+      final permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) return;
+      final pos = await Geolocator.getCurrentPosition();
+      final latlng = mb.LatLng(pos.latitude, pos.longitude);
+      setState(() { _pickedLocation = latlng; });
+      if (_mapController != null) {
+        if (_locationSymbol == null) {
+          _locationSymbol = await _mapController!.addSymbol(mb.SymbolOptions(geometry: latlng, iconImage: 'assets/icons/marker.png', iconSize: 0.12));
+        } else {
+          await _mapController!.updateSymbolImmediate(_locationSymbol!, latlng);
+        }
+        await _mapController!.moveCameraImmediate(latlng, 14.0);
+      }
+    } catch (e) {
+      debugPrint('Error getting location: $e');
+    }
+  }
+
+  Future<void> _openFullScreenMap() async {
+    final mb.LatLng? chosen = await showModalBottomSheet<mb.LatLng>(
+      context: context,
+      isScrollControlled: true,
+      enableDrag: false,
+      backgroundColor: Colors.black,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        mb.LatLng? localPicked = _pickedLocation;
+        mb.MapboxMapController? localCtrl;
+        mb.Symbol? localSym;
+        return StatefulBuilder(
+          builder: (ctx2, setSt) {
+            return SizedBox(
+              height: MediaQuery.of(ctx).size.height * 0.92,
+              child: Column(
+                children: [
+                  AppBar(
+                    backgroundColor: Colors.transparent,
+                    elevation: 0,
+                    title: const Text('Wybierz lokalizację', style: TextStyle(color: Colors.white)),
+                    automaticallyImplyLeading: false,
+                    actions: [
+                      IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(ctx).pop(null)),
+                    ],
+                  ),
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16)),
+                      child: mb.MapboxMap(
+                        accessToken: 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg',
+                        initialCameraPosition: mb.CameraPosition(target: localPicked ?? (_currentLatLng ?? mb.LatLng(52.2297,21.0122)), zoom: 13),
+                        styleUri: 'mapbox://styles/bosiuuq/cmgf5xezs00i701sec30chpp0',
+                        onMapCreated: (controller) async {
+                          localCtrl = controller;
+                          try { await localCtrl!.initManagers(); } catch(_) {}
+                          if (_currentLatLng != null) {
+                            try {
+                              await localCtrl!.addSymbol(mb.SymbolOptions(geometry: _currentLatLng!, iconImage: 'assets/icons/marker.png', iconSize: 0.12));
+                            } catch (_) {}
+                          }
+                          if (localPicked != null) {
+                            localSym = await localCtrl!.addSymbol(mb.SymbolOptions(geometry: localPicked!, iconImage: 'assets/icons/dest_pin.png', iconSize: 0.20));
+                          }
+                        },
+                        onTap: (latlng) async {
+                          setSt(() { localPicked = latlng; });
+                          if (localCtrl != null) {
+                            if (localSym == null) {
+                              localSym = await localCtrl!.addSymbol(mb.SymbolOptions(geometry: latlng, iconImage: 'assets/icons/dest_pin.png', iconSize: 0.20));
+                            } else {
+                              await localCtrl!.updateSymbolImmediate(localSym!, latlng);
+                            }
+                          }
+                        },
+                        myLocationEnabled: true,
+                        trackCameraPosition: true,
+                        zoomGesturesEnabled: true,
+                        scrollGesturesEnabled: true,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Row(
+                      children: [
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.of(ctx).pop(localPicked);
+                          },
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent, foregroundColor: Colors.black),
+                          child: const Text('Zapisz lokalizację'),
+                        ),
+                        const SizedBox(width: 12),
+                        if (localPicked != null)
+                          Expanded(child: Text('Wybrano: ${localPicked.latitude.toStringAsFixed(5)}, ${localPicked.longitude.toStringAsFixed(5)}', style: const TextStyle(color: Colors.white70), overflow: TextOverflow.ellipsis)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (chosen != null) {
+      setState(() { _pickedLocation = chosen; });
+    }
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_images.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wybierz co najmniej jedno zdjęcie')));
+      return;
+    }
+    if (_pickedLocation == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wskaż lokalizację na mapie')));
+      return;
+    }
+
+    setState(() => isSubmitting = true);
+    try {
+      final uploaded = await _uploadImage(_images.first);
+      if (uploaded == null) throw Exception("Nie udało się przesłać zdjęcia");
+
+      final success = await backend.SpotyBackend.addSpot(
+        tytul: _nameController.text.trim(),
+        opis: _descController.text.trim(),
+        lokalizacja: '${_pickedLocation!.latitude},${_pickedLocation!.longitude}',
+        lat: _pickedLocation!.latitude,
+        lng: _pickedLocation!.longitude,
+        widocznosc: _visibility,
+        data: DateTime.now(),
+        czasTrwania: const Duration(hours: 2),
+        typ: _type,
+        zasady: '',
+        zdjecieUrl: uploaded,
+      );
+
+      if (success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Spot dodany')));
+          context.pop();
+        }
+      } else {
+        throw Exception("Błąd podczas tworzenia spotu");
+      }
+    } catch (e) {
+      debugPrint("Submit error: $e");
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd: $e')));
+    } finally {
+      if (mounted) setState(() => isSubmitting = false);
+    }
+  }
+
+  Widget _buildField(TextEditingController ctrl, String label, {int maxLines = 1}) {
+    return TextFormField(
+      controller: ctrl,
+      maxLines: maxLines,
+      style: const TextStyle(color: Colors.white),
+      validator: (v) => (v == null || v.trim().isEmpty) ? 'Pole wymagane' : null,
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.white70),
+        filled: true,
+        fillColor: Colors.grey[900],
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: const Text("Dodaj spot", style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            physics: _listScrollable ? null : const NeverScrollableScrollPhysics(),
+            children: [
+              // Name
+              const Text("Nazwa spotu", style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 6),
+              _buildField(_nameController, "Nazwa spotu"),
+              const SizedBox(height: 12),
+
+              // Location picker
+              const Text("Lokalizacja", style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 8),
+              Listener(
+                onPointerDown: (_) { setState(() => _listScrollable = false); },
+                onPointerUp: (_) { setState(() => _listScrollable = true); },
+                child: GestureDetector(
+                  onDoubleTap: _openFullScreenMap,
+                  child: SizedBox(
+                    height: 220,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: mb.MapboxMap(
+                        accessToken: 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg',
+                        initialCameraPosition: mb.CameraPosition(target: _pickedLocation ?? (_currentLatLng ?? mb.LatLng(52.2297,21.0122)), zoom: 13),
+                        styleUri: 'mapbox://styles/bosiuuq/cmgf5xezs00i701sec30chpp0',
+                        onMapCreated: (controller) async { _mapController = controller; try { await _mapController!.initManagers(); } catch(_) {} if (_currentLatLng != null) { try { await _mapController!.addSymbol(mb.SymbolOptions(geometry: _currentLatLng!, iconImage: 'assets/icons/marker.png', iconSize: 0.12)); } catch(_) {} } },,
+                        onTap: (latlng) async {
+                          setState(() { _pickedLocation = latlng; });
+                          if (_mapController != null) {
+                            if (_locationSymbol == null) {
+                              _locationSymbol = await _mapController!.addSymbol(mb.SymbolOptions(geometry: latlng, iconImage: 'assets/icons/dest_pin.png', iconSize: 0.18));
+                            } else {
+                              await _mapController!.updateSymbolImmediate(_locationSymbol!, latlng);
+                            }
+                          }
+                        },
+                        myLocationEnabled: false,
+                        trackCameraPosition: true,
+                        zoomGesturesEnabled: true,
+                        scrollGesturesEnabled: true,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(spacing:12, runSpacing:8, children: [ElevatedButton(onPressed: _useMyLocation, child: const Text('Użyj mojej pozycji')), ElevatedButton(onPressed: _openFullScreenMap, child: const Text('Otwórz mapę (pełny ekran)'))],),
+              const SizedBox(height: 8),
+              if (_pickedLocation != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal:12, vertical:8),
+                  decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(8)),
+                  child: Text('Wybrano: ${_pickedLocation!.latitude.toStringAsFixed(5)}, ${_pickedLocation!.longitude.toStringAsFixed(5)}', style: const TextStyle(color: Colors.white70), overflow: TextOverflow.ellipsis),
+                ),
+              const SizedBox(height: 12),
+
+              // Description
+              const Text("Opis spotu", style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 6),
+              _buildField(_descController, "Opis spotu", maxLines: 4),
+              const SizedBox(height: 12),
+
+              // Images
+              const Text("Zdjęcia (1-5)", style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 96,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    for (final img in _images) Padding(
+                      padding: const EdgeInsets.only(right:8.0),
+                      child: Stack(
+                        children: [
+                          ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(img, width: 96, height: 96, fit: BoxFit.cover)),
+                          Positioned(
+                            right: 0, top: 0,
+                            child: GestureDetector(
+                              onTap: () { setState(() => _images.remove(img)); },
+                              child: Container(padding: const EdgeInsets.all(4), decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(6)), child: const Icon(Icons.close, size: 16, color: Colors.white)),
+                            ),
+                          )
+                        ],
+                      ),
+                    ),
+                    if (_images.length < 5)
+                      InkWell(
+                        onTap: _pickImages,
+                        child: Container(
+                          width: 96,
+                          height: 96,
+                          decoration: BoxDecoration(color: Colors.grey[900], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.white24)),
+                          child: const Center(child: Icon(Icons.add, color: Colors.white)),
+                        ),
+                      )
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Type dropdown
+              const Text("Rodzaj spotu", style: TextStyle(color: Colors.white70)),
+              const SizedBox(height:6),
+              DropdownButtonFormField<String>(
+                value: _type,
+                items: const [
+                  DropdownMenuItem(value: 'official', child: Text('Oficjalny')),
+                  DropdownMenuItem(value: 'community', child: Text('Społecznościowy')),
+                ],
+                onChanged: (v) => setState(() => _type = v ?? 'community'),
+                decoration: InputDecoration(
+                  filled: true,
+                  fillColor: Colors.grey[900],
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                ),
+              ),
+
+              const SizedBox(height: 18),
+              ElevatedButton(
+                onPressed: isSubmitting ? null : _submit,
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent, foregroundColor: Colors.black),
+                child: isSubmitting ? const CircularProgressIndicator() : const Text('Dodaj spot'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

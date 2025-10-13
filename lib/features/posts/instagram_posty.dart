@@ -1,7 +1,7 @@
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:guide_me/core/constants/app_colors.dart';
 import 'package:guide_me/core/config/routing/app_routes.dart';
 import 'package:guide_me/features/posts/instagram_backend.dart';
 
@@ -12,79 +12,88 @@ class InstagramPostyView extends StatefulWidget {
   State<InstagramPostyView> createState() => _InstagramPostyViewState();
 }
 
-class _InstagramPostyViewState extends State<InstagramPostyView> {
-  List<Map<String, dynamic>> allPosts = [];
-  List<Map<String, dynamic>> filteredPosts = [];
-  String searchQuery = "";
-  String sortOption = "Od najnowszych";
-  bool isLoading = true;
+class _InstagramPostyViewState extends State<InstagramPostyView>
+    with AutomaticKeepAliveClientMixin {
+  static const int _pageSize = 30;
+
+  final List<Map<String, dynamic>> _posts = [];
+  bool _isLoading = true;
+  bool _isFetchingMore = false;
+  bool _hasMore = true;
+  int _offset = 0;
+
+  String _search = '';
+  String _period = 'all'; // 'all' | 'today' | 'week' | 'month'
+  Timer? _debounce;
+
+  final ScrollController _scroll = ScrollController();
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
-    _fetchPosts();
+    _fetchFirstPage();
+    _scroll.addListener(_onScroll);
   }
 
-  Future<void> _fetchPosts() async {
-    try {
-      final posts = await InstagramBackend.getPosts();
-      setState(() {
-        allPosts = posts;
-        _applyFilters();
-        isLoading = false;
-      });
-    } catch (e) {
-      print("Błąd pobierania postów: $e");
-      setState(() => isLoading = false);
-    }
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _scroll.dispose();
+    super.dispose();
   }
 
-  void _applyFilters() {
-    List<Map<String, dynamic>> tempPosts = allPosts.where((post) {
-      final description = post['caption']?.toString().toLowerCase() ?? "";
-      return description.contains(searchQuery.toLowerCase());
-    }).toList();
-
-    if (sortOption == "Od najnowszych") {
-      tempPosts.sort((a, b) {
-        final dtA = DateTime.tryParse(a['created_at'] ?? "") ?? DateTime(1970);
-        final dtB = DateTime.tryParse(b['created_at'] ?? "") ?? DateTime(1970);
-        return dtB.compareTo(dtA);
-      });
-    } else if (sortOption == "Najbardziej lubiane dzisiaj") {
-      final today = DateTime.now();
-      tempPosts = tempPosts.where((post) {
-        final dt = DateTime.tryParse(post['created_at'] ?? "") ?? DateTime(1970);
-        return dt.year == today.year &&
-            dt.month == today.month &&
-            dt.day == today.day;
-      }).toList();
-      tempPosts.sort((a, b) => (b['likes'] ?? 0).compareTo(a['likes'] ?? 0));
-    } else if (sortOption == "Najbardziej lubiane w tygodniu") {
-      final weekAgo = DateTime.now().subtract(const Duration(days: 7));
-      tempPosts = tempPosts.where((post) {
-        final dt = DateTime.tryParse(post['created_at'] ?? "") ?? DateTime(1970);
-        return dt.isAfter(weekAgo);
-      }).toList();
-      tempPosts.sort((a, b) => (b['likes'] ?? 0).compareTo(a['likes'] ?? 0));
-    } else if (sortOption == "Najbardziej lubiane w miesiącu") {
-      final monthAgo = DateTime(DateTime.now().year, DateTime.now().month - 1, DateTime.now().day);
-      tempPosts = tempPosts.where((post) {
-        final dt = DateTime.tryParse(post['created_at'] ?? "") ?? DateTime(1970);
-        return dt.isAfter(monthAgo);
-      }).toList();
-      tempPosts.sort((a, b) => (b['likes'] ?? 0).compareTo(a['likes'] ?? 0));
-    }
-
+  Future<void> _fetchFirstPage() async {
     setState(() {
-      filteredPosts = tempPosts;
+      _isLoading = true;
+      _posts.clear();
+      _offset = 0;
+      _hasMore = true;
+    });
+    final page = await InstagramBackend.getPostsPaged(
+      limit: _pageSize,
+      offset: _offset,
+      search: _search,
+      period: _period,
+    );
+    setState(() {
+      _posts.addAll(page);
+      _isLoading = false;
+      _hasMore = page.length == _pageSize;
+      _offset = _posts.length;
     });
   }
 
-  void _onSearchChanged(String query) {
+  Future<void> _fetchMore() async {
+    if (_isFetchingMore || !_hasMore) return;
+    setState(() => _isFetchingMore = true);
+    final page = await InstagramBackend.getPostsPaged(
+      limit: _pageSize,
+      offset: _offset,
+      search: _search,
+      period: _period,
+    );
     setState(() {
-      searchQuery = query;
-      _applyFilters();
+      _posts.addAll(page);
+      _hasMore = page.length == _pageSize;
+      _offset = _posts.length;
+      _isFetchingMore = false;
+    });
+  }
+
+  void _onScroll() {
+    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 400) {
+      _fetchMore();
+    }
+  }
+
+  void _onSearchChanged(String v) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      _search = v.trim();
+      _fetchFirstPage();
     });
   }
 
@@ -94,34 +103,36 @@ class _InstagramPostyViewState extends State<InstagramPostyView> {
       builder: (context) {
         return Wrap(
           children: [
-            _buildSortTile("Od najnowszych"),
-            _buildSortTile("Najbardziej lubiane dzisiaj"),
-            _buildSortTile("Najbardziej lubiane w tygodniu"),
-            _buildSortTile("Najbardziej lubiane w miesiącu"),
+            _buildSortTile("Od najnowszych", 'all'),
+            _buildSortTile("Dzisiaj (najnowsze)", 'today'),
+            _buildSortTile("Ostatni tydzień (najnowsze)", 'week'),
+            _buildSortTile("Ostatni miesiąc (najnowsze)", 'month'),
           ],
         );
       },
     );
   }
 
-  ListTile _buildSortTile(String option) {
+  ListTile _buildSortTile(String label, String periodValue) {
     return ListTile(
-      title: Text(option),
+      title: Text(label),
       onTap: () {
-        setState(() {
-          sortOption = option;
-          _applyFilters();
-        });
         Navigator.pop(context);
+        setState(() => _period = periodValue);
+        _fetchFirstPage();
       },
     );
   }
 
+  Future<void> _onRefresh() => _fetchFirstPage();
+
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Instaguide"),
+        title: const Text("InstaGuide"),
         actions: [
           IconButton(
             icon: const Icon(Icons.more_vert),
@@ -133,6 +144,12 @@ class _InstagramPostyViewState extends State<InstagramPostyView> {
           child: Padding(
             padding: const EdgeInsets.all(8.0),
             child: TextField(
+              textInputAction: TextInputAction.search,
+              onSubmitted: (v) {
+                _debounce?.cancel();
+                _search = v.trim();
+                _fetchFirstPage();
+              },
               decoration: InputDecoration(
                 hintText: "Wyszukaj posty...",
                 prefixIcon: const Icon(Icons.search),
@@ -145,33 +162,40 @@ class _InstagramPostyViewState extends State<InstagramPostyView> {
           ),
         ),
       ),
-      body: isLoading
+      body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : filteredPosts.isEmpty
+          : _posts.isEmpty
               ? const Center(child: Text("Brak postów spełniających kryteria"))
-              : Padding(
-                  padding: const EdgeInsets.all(8.0),
+              : RefreshIndicator(
+                  onRefresh: _onRefresh,
                   child: GridView.builder(
-                    itemCount: filteredPosts.length,
+                    controller: _scroll,
+                    itemCount: _posts.length + (_isFetchingMore ? 1 : 0),
                     gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 3,
                       mainAxisSpacing: 4,
                       crossAxisSpacing: 4,
                       childAspectRatio: 1,
                     ),
+                    cacheExtent: 800,
                     itemBuilder: (context, index) {
-                      final post = filteredPosts[index];
+                      if (index >= _posts.length) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      final post = _posts[index];
+                      final imageUrl = (post['image_url'] as String?) ?? '';
+
                       return InkWell(
-                        onTap: () {
-                          context.pushNamed(
-                            AppRoutes.postDetailsView,
-                            extra: post,
-                          );
-                        },
-                        child: Image.network(
-                          post['image_url'] ?? "",
+                        onTap: () => context.pushNamed(
+                          AppRoutes.postDetailsView,
+                          extra: post,
+                        ),
+                        child: CachedNetworkImage(
+                          imageUrl: imageUrl,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
+                          placeholder: (context, url) =>
+                              Container(color: Colors.black12),
+                          errorWidget: (context, error, stackTrace) =>
                               const Icon(Icons.broken_image),
                         ),
                       );

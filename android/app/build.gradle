@@ -1,0 +1,82 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+// 🔐 Wczytaj dane z key.properties (na samej górze – POZA android {})
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+android {
+    namespace = "com.masdo.guide_me"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = "27.0.12077973"
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+
+    defaultConfig {
+        applicationId = "com.masdo.guide_me"
+        minSdk = flutter.minSdkVersion
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+        multiDexEnabled true
+    }
+
+    signingConfigs {
+        release {
+            // ustaw tylko jeśli plik key.properties istnieje i ma storeFile
+            if (keystorePropertiesFile.exists() && keystoreProperties['storeFile'] != null && keystoreProperties['storeFile'].toString().trim()) {
+                def storeFilePath = keystoreProperties['storeFile'].toString()
+                def resolved = rootProject.file(storeFilePath)
+                if (resolved.exists()) {
+                    storeFile file(storeFilePath)
+                    storePassword keystoreProperties['storePassword']
+                    keyAlias keystoreProperties['keyAlias']
+                    keyPassword keystoreProperties['keyPassword']
+                } else {
+                    println "Keystore file not found at ${resolved}. Skipping release signingConfig."
+                }
+            } else {
+                println "No key.properties or storeFile entry — skipping release signingConfig."
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // przypisz signingConfig tylko jeśli key.properties istnieje (lub jeśli chcesz wymusić)
+            if (keystorePropertiesFile.exists() && keystoreProperties['storeFile'] != null && keystoreProperties['storeFile'].toString().trim()) {
+                signingConfig signingConfigs.release
+            } else {
+                // bez signingConfig — build użyje debugowego podpisu (ok na debug/quick testy)
+                println "Release build will not use custom signing config (key.properties missing)."
+            }
+            shrinkResources false
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+flutter {
+    source = "../.."
+}
+
+dependencies {
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.8.10"
+    implementation 'androidx.multidex:multidex:2.0.1'
+}
+
+apply plugin: 'com.google.gms.google-services'

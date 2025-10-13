@@ -1,4 +1,5 @@
-// 📁 garage_backend.dart – z obsługą zakładki paliwo i statystyk miesięcznych
+// 📁 garage_backend.dart – z obsługą zakładki paliwo, statystyk miesięcznych
+// + limit pojazdów w garażu (garage_slots) sprawdzany przed dodaniem
 
 import 'dart:convert';
 import 'dart:io';
@@ -19,6 +20,54 @@ class GarageBackend {
     return user.id;
   }
 
+  // ====== LIMITY GARAŻU ======================================================
+
+  /// Pobiera limit slotów garażu z public.users.garage_slots
+  static Future<int> _getGarageSlotsForUser(String userId) async {
+    final row = await _client
+        .from('users') // public.users
+        .select('garage_slots')
+        .eq('id', userId)
+        .maybeSingle();
+
+    // Fallback, gdyby kolumna/wiersz nie istniał: 2
+    final slots = (row?['garage_slots'] as int?) ?? 2;
+    return slots;
+  }
+
+  /// Liczba pojazdów należących do użytkownika
+  static Future<int> _getUserVehicleCount(String userId) async {
+    // Prosto i niezawodnie: pobierz id i policz długość.
+    final data = await _client
+        .from('garaz')
+        .select('id')
+        .eq('owner_id', userId);
+
+    return (data is List) ? data.length : 0;
+  }
+
+  /// Zwraca {used, limit} dla aktualnego usera
+  static Future<Map<String, int>> getGarageUsage() async {
+    final uid = _getCurrentUserId();
+    final used = await _getUserVehicleCount(uid);
+    final limit = await _getGarageSlotsForUser(uid);
+    return {'used': used, 'limit': limit};
+  }
+
+  /// Czy można dodać kolejny pojazd? (użyteczne do blokowania przycisku w UI)
+  static Future<bool> canAddVehicle() async {
+    final usage = await getGarageUsage();
+    return usage['used']! < usage['limit']!;
+  }
+
+  /// Ile slotów zostaje wolnych
+  static Future<int> getRemainingGarageSlots() async {
+    final usage = await getGarageUsage();
+    return (usage['limit']! - usage['used']!).clamp(0, 1 << 30);
+  }
+
+  // ====== UPLOAD OBRAZKÓW ====================================================
+
   static Future<String> uploadVehicleImage(File imageFile, String fileName) async {
     final bytes = await imageFile.readAsBytes();
     await _client.storage.from('garaz').uploadBinary(fileName, bytes);
@@ -26,10 +75,23 @@ class GarageBackend {
     return publicUrl;
   }
 
+  // ====== CRUD POJAZDÓW ======================================================
+
   static Future<void> addVehicle(Vehicle vehicle, List<File> images) async {
     final ownerId = _getCurrentUserId();
-    List<String> imageUrls = [];
 
+    // ⚠️ TUTAJ sprawdzamy limit PRZED dodaniem
+    final limit = await _getGarageSlotsForUser(ownerId);
+    final used = await _getUserVehicleCount(ownerId);
+    if (used >= limit) {
+      throw Exception(
+        'Osiągnięto limit pojazdów w garażu ($used/$limit). '
+        'Zwiększ limit lub usuń istniejący pojazd.',
+      );
+    }
+
+    // Upload zdjęć
+    List<String> imageUrls = [];
     for (int i = 0; i < images.length; i++) {
       final ext = images[i].path.split('.').last;
       final fileName = '${DateTime.now().millisecondsSinceEpoch}_$i.$ext';
@@ -37,6 +99,7 @@ class GarageBackend {
       imageUrls.add(url);
     }
 
+    // Insert pojazdu
     final data = {
       'owner_id': ownerId,
       'brand': vehicle.brand,
@@ -159,6 +222,8 @@ class GarageBackend {
     return data?['status'] ?? 'otwarty';
   }
 
+  // ====== ZGŁOSZENIA / DISCORD ===============================================
+
   static Future<void> reportVehicleToDiscord({
     required String vehicleId,
     required String reason,
@@ -188,6 +253,8 @@ class GarageBackend {
       body: jsonEncode({"embeds": [embed]}),
     );
   }
+
+  // ====== LOGI POJAZDU, SERWIS, PALIWO ======================================
 
   static Future<Map<String, dynamic>?> fetchVehicleLog(String vehicleId) async {
     final data = await _client

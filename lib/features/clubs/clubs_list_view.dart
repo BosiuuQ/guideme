@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:guide_me/features/clubs/club_preview_widget.dart';
 
 class ClubsListView extends StatefulWidget {
   const ClubsListView({super.key});
@@ -104,6 +105,7 @@ class _ClubsListViewState extends State<ClubsListView> {
                   ),
                   child: ListTile(
                     contentPadding: const EdgeInsets.all(16),
+                    onTap: () => showClubPreview(context, club),
                     leading: CircleAvatar(
                       radius: 30,
                       backgroundImage: NetworkImage(club['logo_url'] ?? ''),

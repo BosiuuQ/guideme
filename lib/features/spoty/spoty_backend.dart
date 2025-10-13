@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
 
 class SpotyBackend {
   static final _supabase = Supabase.instance.client;
@@ -70,6 +71,15 @@ class SpotyBackend {
     required String zasady,
     required String zdjecieUrl,
   }) async {
+    // Normalizacja typów i wartości zgodnie ze schematem bazy
+    String _normalizeVisibility(String v) {
+      final val = v.toLowerCase();
+      if (val.contains('public')) return 'publiczna';
+      if (val.contains('znajom')) return 'tylko_znajomi';
+      return 'publiczna';
+    }
+    final String wid = _normalizeVisibility(widocznosc);
+
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) throw Exception("Użytkownik niezalogowany");
@@ -81,9 +91,9 @@ class SpotyBackend {
         'lokalizacja': lokalizacja,
         'lat': lat,
         'lng': lng,
-        'widocznosc': widocznosc,
-        'data': data.toIso8601String(),
-        'czas_trwania': '${czasTrwania.inMinutes} minutes',
+        'widocznosc': wid,
+        'data': DateFormat('yyyy-MM-dd HH:mm:ss').format(data),
+        'czas_trwania': '${(czasTrwania.inHours).toString().padLeft(2,'0')}:${(czasTrwania.inMinutes%60).toString().padLeft(2,'0')}:${(czasTrwania.inSeconds%60).toString().padLeft(2,'0')}',
         'typ': typ,
         'zasady': zasady,
         'zdjecie_url': zdjecieUrl,

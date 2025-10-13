@@ -54,18 +54,31 @@
 	<key>GMSApiKey</key>
 	<string>AIzaSyCvEzWl7SGN5LEAbaIs7nN91M7We3VHr5E</string>
 
-	<!-- ✅ Uprawnienia lokalizacyjne -->
+	<!-- ✅ Uprawnienia: LOKALIZACJA -->
+	<!-- // poprawione: doprecyzowany, konkretny opis zgodny z Guideline 5.1.1 -->
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Aplikacja wymaga dostępu do lokalizacji, aby pokazywać Twoją pozycję na mapie.</string>
+	<string>GuideMe używa Twojej lokalizacji do wyznaczania tras i pokazywania pobliskich punktów widokowych podczas korzystania z aplikacji.</string>
+	<!-- // poprawione: zawsze i w trakcie użycia — zostaw tylko jeśli naprawdę potrzebujesz lokalizacji w tle -->
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Wymagamy dostępu do lokalizacji nawet w tle (np. do nawigacji lub zgłoszeń).</string>
+	<string>GuideMe może używać lokalizacji w tle, aby kontynuować nawigację i aktualizacje trasy, gdy ekran jest zablokowany lub przełączysz aplikację.</string>
 
-	<!-- ✅ Uprawnienia do zdjęć i aparatu -->
+	<!-- ✅ Jeśli faktycznie używasz lokalizacji w tle, Apple oczekuje UIBackgroundModes=location -->
+	<!-- // poprawione: dodany background mode; USUŃ ten blok, jeśli nie śledzisz lokalizacji w tle -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
+
+	<!-- ✅ Uprawnienia: ZDJĘCIA i APARAT -->
+	<!-- // poprawione: konkretny opis użycia galerii -->
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Aplikacja wymaga dostępu do galerii, aby umożliwić wybór zdjęć.</string>
+	<string>GuideMe potrzebuje dostępu do zdjęć, aby dodać fotografie pojazdów, miejsc i postów społecznościowych.</string>
+	<!-- // poprawione: zapis do biblioteki (iOS 11+ wymagane osobno) -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>GuideMe zapisuje zdjęcia pojazdów i miejsc do Twojej biblioteki, gdy zapisujesz lub eksportujesz treści.</string>
+	<!-- // poprawione: konkretny opis użycia aparatu -->
 	<key>NSCameraUsageDescription</key>
-	<string>Aplikacja wymaga dostępu do aparatu, aby umożliwić robienie zdjęć.</string>
-  <key>MGLMapboxAccessToken</key>
-  <string>YOUR_MAPBOX_ACCESS_TOKEN</string>
+	<string>GuideMe potrzebuje dostępu do aparatu, aby umożliwić robienie zdjęć pojazdów, miejsc i postów społecznościowych.</string>
+
 </dict>
 </plist>

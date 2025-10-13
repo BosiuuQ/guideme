@@ -1,6 +1,7 @@
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 import 'package:guide_me/mapbox_shim.dart' as mb;
 import 'active_navigation_view.dart';
@@ -22,6 +23,9 @@ class RoutePlannerView extends StatefulWidget {
 }
 
 class _RoutePlannerViewState extends State<RoutePlannerView> {
+  // PointAnnotationManager used to add symbols above line layers
+  dynamic _pointManager; // will be set to the platform-specific PointAnnotationManager
+
   static const String _mapboxToken = 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg';
   bool _loading = true;
   String? _error;
@@ -85,35 +89,55 @@ class _RoutePlannerViewState extends State<RoutePlannerView> {
       }
       final centerLat = (minLat + maxLat) / 2.0;
       final centerLng = (minLng + maxLng) / 2.0;
-      final latSpan = (maxLat - minLat).abs();
-      final lngSpan = (maxLng - minLng).abs();
+      // Compute zoom based on route distance if available, otherwise fallback to span-based heuristic.
       double zoom = 14.0;
-      final span = latSpan > lngSpan ? latSpan : lngSpan;
-      if (span < 0.002) zoom = 18.0;
-      else if (span < 0.01) zoom = 16.0;
-      else if (span < 0.05) zoom = 14.0;
-      else if (span < 0.3) zoom = 12.0;
+      if (_distanceMeters != null && _distanceMeters! > 0) {
+        final km = _distanceMeters! / 1000.0;
+        // Log-scale formula: zoom decreases with distance. Tunable parameters:
+        // maxZoom: zoom for very short trips, minZoom: for very long trips, scale controls falloff.
+        const double maxZoom = 16.0;
+        const double minZoom = 4.0;
+        const double scale = 4.0;
+        final double log10 = math.log(km + 1) / math.ln10;
+        zoom = maxZoom - scale * log10;
+        if (zoom < minZoom) zoom = minZoom;
+        if (zoom > maxZoom) zoom = maxZoom;
+      } else {
+        // fallback to previous span heuristic
+        final latSpan = (maxLat - minLat).abs();
+        final lngSpan = (maxLng - minLng).abs();
+        final span = latSpan > lngSpan ? latSpan : lngSpan;
+        if (span < 0.002) zoom = 16.5;
+        else if (span < 0.01) zoom = 14.5;
+        else if (span < 0.05) zoom = 12.5;
+        else if (span < 0.3) zoom = 10.5;
+      }
       _controller!.moveCameraImmediate(mb.LatLng(centerLat, centerLng), zoom);
 
       try {
-        _controller!.addSymbol(mb.SymbolOptions(
-          geometry: widget.origin,
-          data: {'type': 'origin'},
-        ));
-        _controller!.addSymbol(mb.SymbolOptions(
-          geometry: widget.destination,
-          data: {'type': 'destination'},
-        ));
 
         // ➕ tu poprawka: async/await działa prawidłowo
         final lineCoords = _coords.map((c) => mb.LatLng(c[0], c[1])).toList();
-        await _controller!.addLine(
+        await _controller!.addEmissiveLine(
           mb.LineOptions(
             geometry: lineCoords,
-            lineColor: '#3B82F6',
+            lineColor: '#FF0092d2', // neon cyan (AARRGGBB)
             lineWidth: 6.0,
           ),
+          emissiveStrength: 1.5, // zwiększ jeśli chcesz jeszcze jaśniej
+          layerId: 'route_emissive_line',
         );
+
+      _controller!.addSymbol(mb.SymbolOptions(
+        geometry: widget.origin,
+        iconImage: 'assets/icons/marker.png',
+        iconSize: 0.15,
+      ));
+      _controller!.addSymbol(mb.SymbolOptions(
+        geometry: widget.destination,
+        iconImage: 'assets/icons/dest_pin.png',
+        iconSize: 0.22,
+      ));
       } catch (e) {
         debugPrint('Error while adding symbols/line: $e');
       }

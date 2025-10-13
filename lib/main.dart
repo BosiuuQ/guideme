@@ -8,6 +8,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:guide_me/guide_me.dart';
 import 'package:intl/intl.dart';
 import 'dart:io'; // ← potrzebne do sprawdzania platformy
+import 'package:permission_handler/permission_handler.dart';
+import 'permission_gate.dart';
 
 final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<void>>();
 
@@ -42,6 +44,13 @@ void main() async {
   // SharedPreferences
   await SharedPreferences.getInstance();
 
+  // determine initial permission to avoid flicker
+  bool _initialLocationGranted = false;
+  try {
+    final status = await Permission.locationWhenInUse.status;
+    _initialLocationGranted = status.isGranted;
+  } catch (_) {}
+
   // Uruchomienie aplikacji
   runApp(
     ProviderScope(
@@ -50,7 +59,7 @@ void main() async {
         path: 'assets/translations',
         fallbackLocale: const Locale('pl', 'PL'),
         startLocale: const Locale('pl', 'PL'),
-        child: const GuideMe(),
+        child: PermissionGate(child: const GuideMe(), initialGranted: _initialLocationGranted),
       ),
     ),
   );

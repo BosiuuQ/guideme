@@ -8,7 +8,7 @@ final ThemeData appTheme = ThemeData(
   scaffoldBackgroundColor: AppColors.darkBlue,
   iconTheme: const IconThemeData(
     color: AppColors.lightBlue,
-    size: 24.0,
+    size: 22.0,
   ),
   cardTheme: const CardThemeData(
     margin: EdgeInsets.zero,
@@ -61,24 +61,24 @@ final ThemeData appTheme = ThemeData(
       ),
     ),
     contentPadding: const EdgeInsets.symmetric(
-      horizontal: 12.0,
-      vertical: 6.0,
+      horizontal: 10.0,
+      vertical: 4.0,
     ),
   ),
   elevatedButtonTheme: ElevatedButtonThemeData(
     style: ButtonStyle(
-      backgroundColor: const WidgetStatePropertyAll(AppColors.blue),
+      backgroundColor: const WidgetStatePropertyAll(AppColors.superLightBlue),
+      foregroundColor: const WidgetStatePropertyAll(Colors.black),
       textStyle: const WidgetStatePropertyAll(
         TextStyle(
           fontWeight: FontWeight.bold,
         ),
       ),
-      foregroundColor: const WidgetStatePropertyAll(Colors.white),
       overlayColor: WidgetStateProperty.resolveWith((state) {
         if (state.contains(WidgetState.pressed)) {
           return AppColors.darkBlue.withAlpha(60);
         }
-        return AppColors.blue;
+        return AppColors.superLightBlue;
       }),
     ),
   ),

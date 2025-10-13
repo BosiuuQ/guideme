@@ -26,35 +26,35 @@ class ProfileView extends StatefulWidget {
 }
 
 class _ProfileViewState extends State<ProfileView> {
-bool isRequestSent = false;
-bool isLoadingRequestStatus = true;
-bool _isFriend = false; // <-- DODANE
+  bool isRequestSent = false;
+  bool isLoadingRequestStatus = true;
+  bool _isFriend = false; // <-- DODANE
   double currentKm = 0;
 
-Future<void> _checkFriendRequestStatus() async {
-  final result = await ZnajomiBackend.isFriendRequestSent(widget.userId!);
-  setState(() {
-    isRequestSent = result;
-    isLoadingRequestStatus = false;
-  });
-}
-
- @override
-void initState() {
-  super.initState();
-  if (widget.userId != null) {
-    _checkFriendRequestStatus();
-    _checkIfFriend();
+  Future<void> _checkFriendRequestStatus() async {
+    final result = await ZnajomiBackend.isFriendRequestSent(widget.userId!);
+    setState(() {
+      isRequestSent = result;
+      isLoadingRequestStatus = false;
+    });
   }
-  _loadDistance();
-}
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.userId != null) {
+      _checkFriendRequestStatus();
+      _checkIfFriend();
+    }
+    _loadDistance();
+  }
 
   Future<void> _checkIfFriend() async {
-  final result = await ZnajomiBackend.areFriends(widget.userId!);
-  setState(() {
-    _isFriend = result;
-  });
-}
+    final result = await ZnajomiBackend.areFriends(widget.userId!);
+    setState(() {
+      _isFriend = result;
+    });
+  }
 
   Future<void> _loadDistance() async {
     final userId = widget.userId ?? Supabase.instance.client.auth.currentUser?.id;
@@ -71,33 +71,33 @@ void initState() {
     });
   }
 
- Future<void> _sendFriendRequest() async {
-  await ZnajomiBackend.sendFriendRequest(widget.userId!);
-  setState(() {
-    isRequestSent = true;
-  });
-  ScaffoldMessenger.of(context).showSnackBar(
-    const SnackBar(content: Text("Zaproszenie wysłane")),
-  );
-}
-
-// ⬇️ tutaj wklej:
-Future<void> _removeFriend() async {
-  try {
-    await ZnajomiBackend.removeFriend(widget.userId!);
+  Future<void> _sendFriendRequest() async {
+    await ZnajomiBackend.sendFriendRequest(widget.userId!);
     setState(() {
-      _isFriend = false;
-      isRequestSent = false;
+      isRequestSent = true;
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Usunięto ze znajomych")),
-    );
-  } catch (e) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Błąd: $e")),
+      const SnackBar(content: Text("Zaproszenie wysłane")),
     );
   }
-}
+
+  // ⬇️ tutaj wklej:
+  Future<void> _removeFriend() async {
+    try {
+      await ZnajomiBackend.removeFriend(widget.userId!);
+      setState(() {
+        _isFriend = false;
+        isRequestSent = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Usunięto ze znajomych")),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Błąd: $e")),
+      );
+    }
+  }
 
   Future<void> _handleGarageAccess() async {
     final userId = widget.userId!;
@@ -165,7 +165,7 @@ Future<void> _removeFriend() async {
                     if (snapshot.hasError) {
                       return Padding(
                         padding: const EdgeInsets.all(16),
-                        child: Text("Błąd: \${snapshot.error}", style: const TextStyle(color: Colors.red)),
+                        child: Text("Błąd: ${snapshot.error}", style: const TextStyle(color: Colors.red)),
                       );
                     }
 
@@ -181,15 +181,17 @@ Future<void> _removeFriend() async {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           GestureDetector(
-                            onTap: () {
-                         Navigator.of(context).push(
-  MaterialPageRoute(
-    builder: (_) => LevelView(
-      currentLevel: int.tryParse(level) ?? 1,
-    ),
-  ),
-);
-                            },
+                            onTap: isOwnProfile
+                                ? () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => LevelView(
+                                          currentLevel: int.tryParse(level) ?? 1,
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                : null, // <-- WYŁĄCZONE KLIKANIE NA CUDZYM PROFILU
                             child: SizedBox(
                               height: 100,
                               width: 100,
@@ -241,12 +243,12 @@ Future<void> _removeFriend() async {
           body: TabBarView(
             children: [
               UserPostsTabWidget(userId: widget.userId),
-              const AchievementsTabWidget(),
+              AchievementsTabWidget(userId: widget.userId), // <-- OSIĄGNIĘCIA DLA TEGO PROFILU
               FutureBuilder<List<Map<String, dynamic>>>(
                 future: ProfileBackend.getUserViewpoints(userId: widget.userId),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                  if (snapshot.hasError) return Center(child: Text("Błąd: \${snapshot.error}"));
+                  if (snapshot.hasError) return Center(child: Text("Błąd: ${snapshot.error}"));
                   final viewpoints = snapshot.data ?? [];
                   if (viewpoints.isEmpty) return const Center(child: Text("Brak punktów widokowych"));
                   return ListView.separated(
@@ -282,28 +284,28 @@ Future<void> _removeFriend() async {
                       ),
                     ),
                     const SizedBox(width: 12),
-                 Expanded(
-  child: isLoadingRequestStatus
-      ? const Center(child: CircularProgressIndicator())
-      : ElevatedButton.icon(
-          onPressed: _isFriend
-              ? _removeFriend
-              : (isRequestSent ? null : _sendFriendRequest),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: _isFriend
-                ? Colors.redAccent
-                : (isRequestSent ? Colors.grey : AppColors.blue),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-          icon: Icon(_isFriend
-              ? Icons.person_remove
-              : (isRequestSent ? Icons.hourglass_top : Icons.person_add_alt_1)),
-          label: Text(_isFriend
-              ? "Usuń znajomego"
-              : (isRequestSent ? "Zaproszenie oczekuje" : "Dodaj do znajomych")),
-        ),
-),
+                    Expanded(
+                      child: isLoadingRequestStatus
+                          ? const Center(child: CircularProgressIndicator())
+                          : ElevatedButton.icon(
+                              onPressed: _isFriend
+                                  ? _removeFriend
+                                  : (isRequestSent ? null : _sendFriendRequest),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: _isFriend
+                                    ? Colors.redAccent
+                                    : (isRequestSent ? Colors.grey : AppColors.blue),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              icon: Icon(_isFriend
+                                  ? Icons.person_remove
+                                  : (isRequestSent ? Icons.hourglass_top : Icons.person_add_alt_1)),
+                              label: Text(_isFriend
+                                  ? "Usuń znajomego"
+                                  : (isRequestSent ? "Zaproszenie oczekuje" : "Dodaj do znajomych")),
+                            ),
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton.icon(

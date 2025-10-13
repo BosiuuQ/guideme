@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:guide_me/mapbox_shim.dart' as mb;
-import 'package:guide_me/mapbox_shim.dart';
-import 'package:guide_me/mapbox_shim.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:guide_me/features/spoty/spot_add_view.dart';
 import 'package:guide_me/features/spoty/spoty_backend.dart';
 import 'package:guide_me/features/spoty/spot_detail_view.dart';
-import 'package:flutter/scheduler.dart';
 
 
 class SpotyView extends StatefulWidget {
@@ -18,14 +15,57 @@ class SpotyView extends StatefulWidget {
 }
 
 class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMixin {
-  LatLng? _currentLatLng;
-  mb.MapboxMapController? _mapController;
+  mb.LatLng? _currentLatLng;
   TabController? _tabController;
 
   List<Map<String, dynamic>> officialSpots = [];
   List<Map<String, dynamic>> communitySpots = [];
-  Set<Marker> _markers = {};
   Map<String, dynamic>? _selectedSpot;
+
+
+
+  mb.MapboxMapController? _mapController;
+
+  mb.LatLng? _extractLatLngFromSpot(Map<String, dynamic> spot) {
+    try {
+      // common keys
+      if (spot.containsKey('lat') && spot.containsKey('lng')) {
+        final double lat = (spot['lat'] is String) ? double.tryParse(spot['lat']) ?? 0.0 : (spot['lat']?.toDouble() ?? 0.0);
+        final double lng = (spot['lng'] is String) ? double.tryParse(spot['lng']) ?? 0.0 : (spot['lng']?.toDouble() ?? 0.0);
+        return mb.LatLng(lat, lng);
+      }
+      if (spot.containsKey('latitude') && spot.containsKey('longitude')) {
+        final double lat = (spot['latitude'] is String) ? double.tryParse(spot['latitude']) ?? 0.0 : (spot['latitude']?.toDouble() ?? 0.0);
+        final double lng = (spot['longitude'] is String) ? double.tryParse(spot['longitude']) ?? 0.0 : (spot['longitude']?.toDouble() ?? 0.0);
+        return mb.LatLng(lat, lng);
+      }
+      // nested location object
+      if (spot.containsKey('location') && spot['location'] is Map) {
+        final loc = spot['location'] as Map;
+        if (loc.containsKey('lat') && loc.containsKey('lng')) {
+          final double lat = (loc['lat'] is String) ? double.tryParse(loc['lat']) ?? 0.0 : (loc['lat']?.toDouble() ?? 0.0);
+          final double lng = (loc['lng'] is String) ? double.tryParse(loc['lng']) ?? 0.0 : (loc['lng']?.toDouble() ?? 0.0);
+          return mb.LatLng(lat, lng);
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _updateMapSymbols(List<Map<String,dynamic>> spots) async {
+    if (_mapController == null) return;
+    try {
+      // no symbol manager removal API exposed; add symbols for each spot we can parse
+      for (final s in spots) {
+        final pos = _extractLatLngFromSpot(s);
+        if (pos == null) continue;
+        await _mapController!.addSymbol(mb.SymbolOptions(geometry: pos, iconImage: 'assets/icons/dest_pin.png', iconSize: 1.0));
+      }
+    } catch (e) {
+      // ignore errors but print for debug
+      debugPrint('Error adding symbols: \$e');
+    }
+  }
 
   @override
   void initState() {
@@ -40,7 +80,7 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
 
     final position = await Geolocator.getCurrentPosition();
     setState(() {
-      _currentLatLng = LatLng(position.latitude, position.longitude);
+      _currentLatLng = mb.LatLng(position.latitude, position.longitude);
     });
 
     await _loadSpoty();
@@ -64,27 +104,13 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
       }).toList();
     });
 
-    _createMarkers(spoty);
-    debugPrint("📦 Oficjalne: ${officialSpots.length} | Społecznościowe: ${communitySpots.length}");
-  }
-
-  void _createMarkers(List<Map<String, dynamic>> spots) {
-    final newMarkers = spots.map((spot) {
-      return Marker(
-        markerId: MarkerId(spot['id']),
-        position: LatLng(spot['lat'], spot['lng']),
-        icon: BitmapDescriptor.defaultMarker,
-        onTap: () {
-          setState(() {
-            _selectedSpot = spot;
-          });
-        },
-      );
-    }).toSet();
-
-    setState(() {
-      _markers = newMarkers;
+    // Dodajemy symbole na mapie (jeśli kontroler Mapbox jest gotowy)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final combined = [...officialSpots, ...communitySpots];
+      _updateMapSymbols(combined);
     });
+
+    debugPrint("📦 Oficjalne: ${officialSpots.length} | Społecznościowe: ${communitySpots.length}");
   }
 
   @override
@@ -128,12 +154,30 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
                 padding: const EdgeInsets.all(12.0),
                 child: SizedBox(
                   height: 260,
-                  child: ClipRRect(
+                  child: 
+                    ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: Container(height:200, color: Colors.grey),
-                  ),
-                ),
-              ),
+                    child: SizedBox(
+                      height: MediaQuery.of(context).size.height * 0.5,
+                      child: mb.MapboxMap(
+                        accessToken: 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg',
+                        initialCameraPosition: mb.CameraPosition(target: _currentLatLng ?? mb.LatLng(52.2297,21.0122), zoom: 13),
+                        styleUri: 'mapbox://styles/bosiuuq/cmgf5xezs00i701sec30chpp0',
+                        onMapCreated: (controller) async {
+                          _mapController = controller;
+                          try {
+                            if (_currentLatLng != null) {
+                              await _mapController!.addSymbol(mb.SymbolOptions(geometry: _currentLatLng!, iconImage: 'assets/icons/marker.png', iconSize: 0.12));
+                            }
+                          } catch (e) { debugPrint('Error adding user symbol: \$e'); }
+                        },
+                        myLocationEnabled: true,
+                        trackCameraPosition: true,
+                    ))))),
+
+
+
+
               Expanded(
                 child: TabBarView(
                   controller: _tabController,

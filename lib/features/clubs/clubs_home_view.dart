@@ -1,6 +1,13 @@
+
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide ImageSource;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:guide_me/features/clubs/clubs_list_view.dart';
+import 'package:guide_me/features/clubs/my_club_view.dart';
+import 'package:guide_me/features/clubs/create_club_view.dart';
 
 class ClubsHomeView extends StatefulWidget {
   const ClubsHomeView({super.key});
@@ -12,7 +19,16 @@ class ClubsHomeView extends StatefulWidget {
 class _ClubsHomeViewState extends State<ClubsHomeView> {
   bool isLoading = true;
   bool isInClub = false;
-  List<Map<String, dynamic>> invitations = [];
+  String _selectedTab = 'wszystkie';
+  final supabase = Supabase.instance.client;
+
+  // Inline create form state
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _bioController = TextEditingController();
+  File? _selectedLogo;
+  bool _isSubmitting = false;
+  bool _isOpen = true;
 
   @override
   void initState() {
@@ -22,254 +38,212 @@ class _ClubsHomeViewState extends State<ClubsHomeView> {
 
   Future<void> _loadData() async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId == null) return;
+    if (userId == null) {
+      setState(() { isInClub = false; isLoading = false; });
+      return;
+    }
+    try {
+      final r = await supabase.from('clubs_members').select().eq('user_id', userId).limit(1);
+      setState(() {
+        isInClub = (r != null && (r is List) && r.isNotEmpty);
+        isLoading = false;
+      });
+    } catch (_) {
+      setState(() { isInClub = false; isLoading = false; });
+    }
+  }
 
-    final clubResponse = await Supabase.instance.client
-        .from('clubs_members')
-        .select()
-        .eq('user_id', userId)
-        .limit(1)
-        .maybeSingle();
-
-    final invitationsResponse = await Supabase.instance.client
-        .from('club_invitations')
-        .select('id, club_id, clubs(name)')
-        .eq('user_id', userId);
-
-    if (!mounted) return;
-
+  void _selectTab(String tab) {
     setState(() {
-      isInClub = clubResponse != null;
-      invitations = List<Map<String, dynamic>>.from(invitationsResponse);
-      isLoading = false;
+      _selectedTab = tab;
     });
   }
 
-  Future<void> _acceptInvite(String inviteId, String clubId) async {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId == null) return;
-
-    final existingClub = await Supabase.instance.client
-        .from('clubs_members')
-        .select()
-        .eq('user_id', userId)
-        .maybeSingle();
-
-    if (existingClub != null) return;
-
-    await Supabase.instance.client.from('clubs_members').insert({
-      'user_id': userId,
-      'club_id': clubId,
-      'rola': 'Czlonek',
-    });
-
-    await Supabase.instance.client
-        .from('club_invitations')
-        .delete()
-        .eq('id', inviteId);
-
-    _loadData();
+  Future<void> _pickLogo() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(source: ImageSource.gallery);
+    if (picked != null) {
+      setState(() {
+        _selectedLogo = File(picked.path);
+      });
+    }
   }
 
-  Future<void> _rejectInvite(String inviteId) async {
-    await Supabase.instance.client
-        .from('club_invitations')
-        .delete()
-        .eq('id', inviteId);
-    _loadData();
+  Future<String?> uploadLogoToSupabase(File file) async {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return null;
+    final fileName = 'logo_${DateTime.now().millisecondsSinceEpoch}_$userId.png';
+    await supabase.storage.from('kluby').upload('logo/$fileName', file);
+    final publicUrl = supabase.storage.from('kluby').getPublicUrl('logo/$fileName');
+    return publicUrl;
   }
 
-  void _showInvitesDialog() {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: Colors.black87,
-        title: const Text("Zaproszenia", style: TextStyle(color: Colors.white)),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: invitations.isEmpty
-              ? const Text("Brak zaproszeń", style: TextStyle(color: Colors.white70))
-              : ListView.separated(
-                  shrinkWrap: true,
-                  separatorBuilder: (_, __) => const Divider(color: Colors.white24),
-                  itemCount: invitations.length,
-                  itemBuilder: (context, index) {
-                    final invite = invitations[index];
-                    final clubName = invite['clubs']?['name'] ?? 'Nieznany klub';
-                    return ListTile(
-                      title: Text(clubName, style: const TextStyle(color: Colors.white)),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.check, color: Colors.green),
-                            onPressed: () async {
-                              await _acceptInvite(
-                                invite['id'].toString(),
-                                invite['club_id'].toString(),
-                              );
-                              if (mounted) Navigator.of(dialogContext).pop();
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.close, color: Colors.red),
-                            onPressed: () async {
-                              await _rejectInvite(invite['id'].toString());
-                              if (mounted) Navigator.of(dialogContext).pop();
-                            },
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              if (mounted) Navigator.of(dialogContext).pop();
-            },
-            child: const Text("Zamknij", style: TextStyle(color: Colors.amber)),
-          )
+  Future<void> _createClubInline() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSubmitting = true);
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Musisz być zalogowany')));
+        return;
+      }
+
+      String? uploadedLogoUrl;
+      if (_selectedLogo != null) {
+        uploadedLogoUrl = await uploadLogoToSupabase(_selectedLogo!);
+        if (uploadedLogoUrl == null) throw Exception("Upload failed");
+      }
+
+      final payload = {
+        'name': _nameController.text.trim(),
+        'logo_url': uploadedLogoUrl ?? '',
+        'bio': _bioController.text.trim(),
+        'is_open': _isOpen,
+        'total_km': 0,
+        'events_count': 0,
+        'user_id': user.id,
+      };
+      final insert = await supabase.from('clubs').insert(payload).select().single();
+      await supabase.from('clubs_members').insert({
+        'user_id': user.id,
+        'club_id': insert['id'],
+        'rola': 'Lider',
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('🎉 Klub został utworzony!')));
+      // refresh state
+      _nameController.clear();
+      _bioController.clear();
+      setState(() {
+        _selectedLogo = null;
+        _isSubmitting = false;
+        _selectedTab = 'moje';
+        _loadData();
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd: $e')));
+      setState(() => _isSubmitting = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _bioController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = const Color(0xFF071E2F);
+    final chipBlue = const Color(0xFF0A84FF);
+    return Scaffold(
+      backgroundColor: bg,
+      appBar: AppBar(
+        title: const Text('Kluby'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: Column(
+        children: [
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                _filterChip('Wszystkie kluby', 'wszystkie', chipBlue),
+                const SizedBox(width: 8),
+                _filterChip('Moje kluby', 'moje', chipBlue),
+                const SizedBox(width: 8),
+                if (!isInClub) _filterChip('Załóż klub', 'zaloz', chipBlue),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(child: _buildTabContent()),
         ],
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: Row(
-          children: [
-            const Icon(Icons.groups_rounded, color: Colors.white),
-            const SizedBox(width: 8),
-            const Text("Kluby", style: TextStyle(fontSize: 24, color: Colors.white)),
-            const Spacer(),
-            Stack(
-              alignment: Alignment.topRight,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.notifications, color: Colors.white),
-                  onPressed: _showInvitesDialog,
-                ),
-                if (invitations.isNotEmpty)
-                  Positioned(
-                    right: 6,
-                    top: 6,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.red,
-                      ),
-                      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                      child: Text(
-                        invitations.length.toString(),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ],
+  Widget _filterChip(String label, String value, Color primary) {
+    final isSelected = _selectedTab == value;
+    return GestureDetector(
+      onTap: () => _selectTab(value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 250),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
+        decoration: BoxDecoration(
+          color: isSelected ? primary : Colors.white.withOpacity(0.03),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: primary, width: 1.2),
         ),
+        child: Text(label, style: TextStyle(color: isSelected ? Colors.white : Colors.white70)),
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.white))
-          : Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Dołącz do klubu lub załóż własny.",
-                    style: TextStyle(color: Colors.white70, fontSize: 16),
-                  ),
-                  const SizedBox(height: 24),
-                  _buildButton(
-                    icon: Icons.search_rounded,
-                    label: "Przeglądaj kluby",
-                    color1: Colors.deepPurple,
-                    color2: Colors.blueAccent,
-                    onTap: () => GoRouter.of(context).push('/clubs/list'),
-                  ),
-                  const SizedBox(height: 16),
-                  if (isInClub)
-                    _buildButton(
-                      icon: Icons.emoji_people_rounded,
-                      label: "Mój klub",
-                      color1: Colors.teal,
-                      color2: Colors.green,
-                      onTap: () => GoRouter.of(context).push('/clubs/my'),
-                    )
-                  else
-                    _buildButton(
-                      icon: Icons.add_circle_outline_rounded,
-                      label: "Załóż klub",
-                      color1: Colors.orange,
-                      color2: Colors.deepOrangeAccent,
-                      onTap: () async {
-                        final result = await GoRouter.of(context).push('/clubs/create');
-                        if (result == true && mounted) {
-                          _loadData(); // odśwież po utworzeniu klubu
-                        }
-                      },
-                    ),
-                ],
-              ),
-            ),
     );
   }
 
-  Widget _buildButton({
-    required IconData icon,
-    required String label,
-    required Color color1,
-    required Color color2,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: LinearGradient(
-            colors: [color1, color2],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+  Widget _buildTabContent() {
+    if (_selectedTab == 'moje') {
+      return const MyClubView();
+    } else if (_selectedTab == 'zaloz') {
+      // Inline form (simplified copy of CreateClubView)
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              TextFormField(
+                controller: _nameController,
+                validator: (v) => (v == null || v.trim().isEmpty) ? 'Wpisz nazwę klubu' : null,
+                decoration: InputDecoration(labelText: 'Nazwa klubu', filled: true, fillColor: Colors.white10, labelStyle: const TextStyle(color: Colors.white70)),
+                style: const TextStyle(color: Colors.white),
+              ),
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: _pickLogo,
+                child: Container(
+                  height: 120,
+                  decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), color: Colors.white10),
+                  child: _selectedLogo != null ? ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.file(_selectedLogo!, fit: BoxFit.cover)) : const Center(child: Text('Kliknij, aby wybrać logo', style: TextStyle(color: Colors.white54))),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _bioController,
+                maxLines: 3,
+                decoration: InputDecoration(labelText: 'Opis / bio klubu', filled: true, fillColor: Colors.white10, labelStyle: const TextStyle(color: Colors.white70)),
+                style: const TextStyle(color: Colors.white),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Text('Typ klubu', style: TextStyle(color: Colors.white70)),
+                  const SizedBox(width: 12),
+                  DropdownButton<bool>(
+                    value: _isOpen,
+                    items: const [
+                      DropdownMenuItem(value: true, child: Text('Otwarty')),
+                      DropdownMenuItem(value: false, child: Text('Zamknięty')),
+                    ],
+                    onChanged: (v) { if (v!=null) setState(()=>_isOpen=v); },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: _isSubmitting ? null : _createClubInline,
+                child: _isSubmitting ? const CircularProgressIndicator() : const Text('Załóż klub'),
+              ),
+              const SizedBox(height: 40),
+            ],
           ),
-          boxShadow: [
-            BoxShadow(
-              color: color2.withOpacity(0.3),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
-            )
-          ],
         ),
-        child: Row(
-          children: [
-            Icon(icon, color: Colors.white, size: 28),
-            const SizedBox(width: 16),
-            Text(label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                )),
-          ],
-        ),
-      ),
-    );
+      );
+    } else {
+      return const ClubsListView();
+    }
   }
 }

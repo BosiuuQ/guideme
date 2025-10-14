@@ -54,18 +54,11 @@ class _ViewpointAddViewState extends State<ViewpointAddView> {
   // ---- PICK IMAGE + CROP ----
   Future<void> _pickImage() async {
     final picker = ImagePicker();
-    XFile? picked;
-    try {
-      picked = await picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 95,
-        maxWidth: 4096,
-      );
-    } catch (e) {
-      debugPrint('ImagePicker failed: \$e');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Nie można wybrać zdjęcia: \$e')));
-      return;
-    }
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 95,
+      maxWidth: 4096,
+    );
     if (picked == null) return;
 
     final original = File(picked.path);
@@ -80,27 +73,20 @@ class _ViewpointAddViewState extends State<ViewpointAddView> {
       cropped = null;
     }
 
-    if (mounted) setState(() {
+    setState(() {
       _imageFile = cropped ?? original;
     });
   }
 
   Future<void> _cropCurrentImage() async {
+
     if (_imageFile == null) return;
-    File? cropped;
-    try {
-      cropped = await ImageCropperHelper.crop(file: _imageFile!);
-    } catch (e) {
-      debugPrint('Image crop failed: \$e');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd przy przycinaniu obrazu: \$e')));
-      cropped = null;
-    }
-
-    if (mounted) setState(() {
-      _imageFile = cropped ?? _imageFile;
+    final cropped = await ImageCropperHelper.crop(file: _imageFile!);
+    if (cropped != null) {
+      setState(() {
+        _imageFile = cropped;
     });
-  }
-
+  }}
 
   // ---- LOCATION ----
   Future<MapPoint> _getCurrentLocation() async {

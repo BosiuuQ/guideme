@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ClubController {
@@ -12,6 +13,23 @@ class ClubController {
         .maybeSingle();
     return result != null;
   }
+
+  Future<Map<String, dynamic>?> getClubById(String clubId) async {
+    try {
+      final data = await Supabase.instance.client
+          .from('clubs')
+          .select()
+          .eq('id', clubId)
+          .maybeSingle();
+      debugPrint('Fetched club for id=$clubId => $data');
+      return data;
+    } catch (e) {
+      debugPrint('getClubById error: $e');
+      return null;
+    }
+  }
+
+
 
   // Sprawdź, czy ma zaproszenie do jakiegokolwiek klubu
   Future<bool> hasPendingInvitation(String userId) async {

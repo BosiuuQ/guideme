@@ -7,12 +7,12 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:guide_me/mapbox_shim.dart' as mb;
-import '../../../core/presentation/views/main_view.dart';
 import 'map_logic_handler.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/presentation/widgets/app_drawer_widget.dart';
 import 'mapbox_navigation_bridge.dart' as _mb;
 import 'main_map_widget.dart';
+import '../../../core/presentation/views/main_view.dart';
 import 'place_search_view.dart'; // for PlaceSearchSheet
 import 'route_planner_view.dart'; // for RoutePlannerView
 
@@ -573,20 +573,20 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> with Single
               onTap: () {
                 try {
                   try {
-                    try {
+                      try {
                       Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
                         MaterialPageRoute(builder: (_) => const MainView()),
-                            (route) => false,
+                        (route) => false,
                       );
                     } catch (e) {
                       debugPrint('Navigation to MainView failed: \$e');
                       Navigator.of(context, rootNavigator: true).pushReplacement(MaterialPageRoute(builder: (_) => const MainView()));
                     }
-                  } catch (e) {
-                    debugPrint('Navigation to MainMapWidget failed: \$e');
-                    // fallback: try pushReplacement on root navigator
-                    Navigator.of(context, rootNavigator: true).pushReplacement(MaterialPageRoute(builder: (_) => const MainMapWidget()));
-                  }
+                    } catch (e) {
+                      debugPrint('Navigation to MainMapWidget failed: \$e');
+                      // fallback: try pushReplacement on root navigator
+                      Navigator.of(context, rootNavigator: true).pushReplacement(MaterialPageRoute(builder: (_) => const MainMapWidget()));
+                    }
                 } catch (_) {
                   try { Navigator.of(context).popUntil((r) => r.isFirst); } catch (_) {}
                 }
@@ -753,22 +753,22 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> with Single
                                               ),
                                               onPressed: () {
                                                 try { _rerouteTimer?.cancel(); } catch(_) {}
-                                                try { _mapLogic.dispose(); } catch(_) {}
+                                                try { _mapLogic.dispose(); } catch(_) {} 
                                                 // Prawidłowy powrót do głównego widoku
                                                 try {
-                                                  try { _mapLogic.dispose(); } catch(_) {}
-                                                  Navigator.of(context).popUntil((route) => route.isFirst);
+                                                  try { _mapLogic.dispose(); } catch(_) {} 
+                                                Navigator.of(context).popUntil((route) => route.isFirst);
                                                 } catch (_) {
                                                   // fallback
                                                   try {
-                                                    Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-                                                      MaterialPageRoute(builder: (_) => const MainView()),
-                                                          (route) => false,
-                                                    );
-                                                  } catch (e) {
-                                                    debugPrint('Navigation to MainView failed: \$e');
-                                                    Navigator.of(context, rootNavigator: true).pushReplacement(MaterialPageRoute(builder: (_) => const MainView()));
-                                                  }
+                      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+                        MaterialPageRoute(builder: (_) => const MainView()),
+                        (route) => false,
+                      );
+                    } catch (e) {
+                      debugPrint('Navigation to MainView failed: \$e');
+                      Navigator.of(context, rootNavigator: true).pushReplacement(MaterialPageRoute(builder: (_) => const MainView()));
+                    }
                                                 }
                                               },
                                               child: const Text(
@@ -778,7 +778,6 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> with Single
                                             ),
                                           ),
                                           const SizedBox(width: 12),
-
 
                                           // Nowa trasa
                                           Expanded(

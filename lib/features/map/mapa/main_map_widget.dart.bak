@@ -5,7 +5,6 @@ import '../../clubs/clubs_home_view.dart';
 import '../../spoty/spoty_view.dart';
 import '../../viewpoint/presentation/views/viewpoint_view.dart';
 import 'map_logic_handler.dart';
-import 'gas_station_service.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'place_search_view.dart';
@@ -24,9 +23,6 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
   late MapLogicHandler _mapLogic;
   double _speedKmh = 0.0;
   double _bearing = 0.0;
-
-  // Gas station info display
-  GasStation? _selectedGasStation;
 
   @override
 
@@ -72,31 +68,31 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
 
 
   Widget buildTagDark(IconData icon, String label, VoidCallback onTap) => GestureDetector(
-    onTap: onTap,
-    child: Container(
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.black87,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 5)],
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: Colors.white),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black87,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 5)],
           ),
-        ],
-      ),
-    ),
-  );
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: Colors.white),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -188,83 +184,6 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
             ),
           ),
         ),
-
-        // Gas station info card
-        if (_selectedGasStation != null)
-          Positioned(
-            bottom: 100.0,
-            left: 16.0,
-            right: 16.0,
-            child: Material(
-              elevation: 8,
-              borderRadius: BorderRadius.circular(12),
-              color: Colors.black87,
-              child: Container(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade700,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(
-                        Icons.local_gas_station,
-                        color: Colors.white,
-                        size: 28,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _selectedGasStation!.name,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (_selectedGasStation!.brand != null)
-                            Text(
-                              _selectedGasStation!.brand!,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
-                            ),
-                          if (_selectedGasStation!.operator != null && _selectedGasStation!.operator != _selectedGasStation!.brand)
-                            Text(
-                              'Operator: ${_selectedGasStation!.operator}',
-                              style: const TextStyle(
-                                color: Colors.white60,
-                                fontSize: 12,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white70),
-                      onPressed: () {
-                        setState(() {
-                          _selectedGasStation = null;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
         Positioned(
           left: 16.0,
           bottom: 16.0,
@@ -332,22 +251,6 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
       styleUri: 'mapbox://styles/bosiuuq/cmgf5xezs00i701sec30chpp0',
       onMapCreated: (controller) {
         _mapLogic.onMapCreated(controller);
-      },
-      onTap: (mb.LatLng position) {
-        // Check if tap is near a gas station
-        final gasStation = _mapLogic.findNearestGasStation(position, maxDistanceMeters: 100.0);
-        if (gasStation != null) {
-          setState(() {
-            _selectedGasStation = gasStation;
-          });
-        } else {
-          // Clear selection if tapped elsewhere
-          if (_selectedGasStation != null) {
-            setState(() {
-              _selectedGasStation = null;
-            });
-          }
-        }
       },
       myLocationEnabled: false,
       trackCameraPosition: true,

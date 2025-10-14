@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:guide_me/mapbox_shim.dart' as mb;
+import 'gas_station_service.dart';
 
 class LocationSample {
   final double latitude;
@@ -61,6 +62,14 @@ class MapLogicHandler {
   // shim controller & symbol
   mb.MapboxMapController? controller;
   mb.Symbol? _userSymbol;
+
+  // Gas station tracking
+  final Map<String, mb.Symbol> _gasStationSymbols = {};
+  final Map<String, GasStation> _gasStationData = {};
+  Timer? _gasStationRefreshTimer;
+  mb.LatLng? _lastGasStationFetchLocation;
+  static const double _gasStationRefreshDistanceMeters = 500.0; // Refresh when moved 500m
+  static const double _gasStationSearchRadiusMeters = 2000.0; // Search within 2km
 
   // config
   int delayMs;
@@ -191,7 +200,7 @@ class MapLogicHandler {
     try {
       final settings = LocationSettings(accuracy: LocationAccuracy.bestForNavigation, distanceFilter: 0);
       _positionSub = Geolocator.getPositionStream(locationSettings: settings).listen((pos) {
-        if (debug) debugPrint('[MapLogic] position callback: ${pos.latitude},${pos.longitude} acc:${pos.accuracy} head:${pos.heading}');
+        //if (debug) debugPrint('[MapLogic] position callback: ${pos.latitude},${pos.longitude} acc:${pos.accuracy} head:${pos.heading}');
         final s = LocationSample(
           latitude: pos.latitude,
           longitude: pos.longitude,
@@ -217,7 +226,7 @@ class MapLogicHandler {
       final last = _lastReceivedAt;
       final now = DateTime.now();
       if (last == null || now.difference(last).inMilliseconds > _pollIntervalMs) {
-        if (debug) debugPrint('[MapLogic] watchdog: no samples in ${_pollIntervalMs}ms -> forcing getCurrentPosition()');
+        //if (debug) debugPrint('[MapLogic] watchdog: no samples in ${_pollIntervalMs}ms -> forcing getCurrentPosition()');
         try {
           Position? pos;
           // Try best-for-navigation quick attempt
@@ -254,7 +263,7 @@ class MapLogicHandler {
               timestamp: pos.timestamp != null ? DateTime.fromMillisecondsSinceEpoch(pos.timestamp!.millisecondsSinceEpoch) : DateTime.now(),
               receivedAt: DateTime.now(),
             );
-            if (debug) debugPrint('[MapLogic] watchdog obtained fallback position: ${pos.latitude},${pos.longitude} acc:${pos.accuracy}');
+            //if (debug) debugPrint('[MapLogic] watchdog obtained fallback position: ${pos.latitude},${pos.longitude} acc:${pos.accuracy}');
             _lastReceivedAt = DateTime.now();
             _processIncomingSampleAndVelocity(s);
             onLocation(s);
@@ -281,6 +290,8 @@ class MapLogicHandler {
     _positionSub = null;
     _pollTimer?.cancel();
     _pollTimer = null;
+    _gasStationRefreshTimer?.cancel();
+    _gasStationRefreshTimer = null;
     if (debug) debugPrint('[MapLogic] stopped');
   }
 
@@ -288,6 +299,8 @@ class MapLogicHandler {
     stop();
     try { if (!_outController.isClosed) await _outController.close(); } catch (_) {}
     _stopPermissionWatcher();
+    _gasStationRefreshTimer?.cancel();
+    _gasStationRefreshTimer = null;
     if (debug) debugPrint('[MapLogic] disposed');
   }
 
@@ -325,6 +338,114 @@ class MapLogicHandler {
         try { await c.moveCameraImmediate(pos, 18.0, bearing: _animBearing ?? _currentBearing); } catch (_) {}
       } catch (_) {}
     }
+
+    // Load gas stations after map is created
+    _startGasStationRefreshTimer();
+  }
+
+  // ---------------- Gas Station Methods ----------------
+  void _startGasStationRefreshTimer() {
+    // Refresh gas stations every 30 seconds if location changed significantly
+    _gasStationRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _refreshGasStationsIfNeeded();
+    });
+    // Initial load - try more frequently until we get a position
+    _refreshGasStationsIfNeeded();
+  }
+
+  Future<void> _refreshGasStationsIfNeeded() async {
+    if (controller == null) {
+      if (debug) debugPrint('[MapLogic] Gas stations: controller is null, skipping');
+      return;
+    }
+
+    final currentPos = displayPosition;
+    if (currentPos == null) {
+      if (debug) debugPrint('[MapLogic] Gas stations: displayPosition is null (waiting for location), will retry on next timer');
+      return;
+    }
+
+    // Check if we moved enough to warrant a refresh
+    if (_lastGasStationFetchLocation != null) {
+      final distance = _haversineMeters(
+        _lastGasStationFetchLocation!.latitude,
+        _lastGasStationFetchLocation!.longitude,
+        currentPos.latitude,
+        currentPos.longitude,
+      );
+      if (distance < _gasStationRefreshDistanceMeters) {
+        return; // Don't refresh yet
+      }
+    }
+
+    if (debug) debugPrint('[MapLogic] Fetching gas stations near ${currentPos.latitude}, ${currentPos.longitude}');
+    _lastGasStationFetchLocation = currentPos;
+
+    try {
+      final gasStations = await GasStationService.fetchNearbyGasStations(
+        currentPos,
+        _gasStationSearchRadiusMeters,
+      );
+
+      if (debug) debugPrint('[MapLogic] Received ${gasStations.length} gas stations');
+
+      // Remove old gas station symbols and data
+      for (var symbol in _gasStationSymbols.values) {
+        try {
+          // Note: mapbox_shim doesn't have removeSymbol, so we skip removal
+          // The symbols will be replaced on the map
+        } catch (e) {
+          if (debug) debugPrint('[MapLogic] Error removing gas station symbol: $e');
+        }
+      }
+      _gasStationSymbols.clear();
+      _gasStationData.clear();
+
+      // Add new gas station symbols
+      for (var station in gasStations) {
+        try {
+          if (debug) debugPrint('[MapLogic] Adding gas station symbol for ${station.name} at ${station.position.latitude},${station.position.longitude}');
+          final symbol = await controller!.addSymbol(
+            mb.SymbolOptions(
+              geometry: station.position,
+              iconImage: 'assets/icons/stacja.png',
+              iconSize: 0.08,
+            ),
+          );
+          _gasStationSymbols[station.id] = symbol;
+          _gasStationData[station.id] = station;
+          if (debug) debugPrint('[MapLogic] Successfully added gas station symbol for ${station.name}');
+        } catch (e) {
+          if (debug) debugPrint('[MapLogic] Error adding gas station symbol for ${station.name}: $e');
+        }
+      }
+
+      if (debug) debugPrint('[MapLogic] Added ${_gasStationSymbols.length} gas station markers');
+    } catch (e) {
+      if (debug) debugPrint('[MapLogic] Error refreshing gas stations: $e');
+    }
+  }
+
+  /// Find the nearest gas station to a given position (for tap handling)
+  GasStation? findNearestGasStation(mb.LatLng tapPosition, {double maxDistanceMeters = 50.0}) {
+    GasStation? nearest;
+    double minDistance = double.infinity;
+
+    for (var station in _gasStationData.values) {
+      final distance = _haversineMeters(
+        station.position.latitude,
+        station.position.longitude,
+        tapPosition.latitude,
+        tapPosition.longitude,
+      );
+
+      if (distance < maxDistanceMeters && distance < minDistance) {
+        minDistance = distance;
+        nearest = station;
+      }
+    }
+
+    return nearest;
   }
 
   // ---------------- buffer handling ----------------
@@ -336,7 +457,7 @@ class MapLogicHandler {
       final cutoff = latest.receivedAt.subtract(Duration(seconds: 10));
       while (_buffer.isNotEmpty && _buffer.first.receivedAt.isBefore(cutoff)) _buffer.removeAt(0);
     }
-    if (debug) debugPrint('[MapLogic] buffered sample buf=${_buffer.length} ${sample.latitude},${sample.longitude} acc=${sample.accuracy}');
+    //if (debug) debugPrint('[MapLogic] buffered sample buf=${_buffer.length} ${sample.latitude},${sample.longitude} acc=${sample.accuracy}');
   }
 
   // ---------------- prediction helpers ----------------
@@ -460,6 +581,10 @@ class MapLogicHandler {
       _animLat = tgtLat;
       _animLng = tgtLng;
       _animBearing = _normalizeBearing(tgtBearing);
+
+      // Trigger gas station load when we get the first position
+      if (debug) debugPrint('[MapLogic] First position obtained, triggering gas station load');
+      _refreshGasStationsIfNeeded();
     }
 
     // update speed estimate using recent samples
@@ -480,7 +605,7 @@ class MapLogicHandler {
     try { if (!_outController.isClosed) _outController.add(animated); } catch (_) {}
     _applyToMap(animated);
 
-    if (debug) debugPrint('[MapLogic] tick α=${(_tau).toStringAsFixed(3)} buf=${_buffer.length} anim=${_animLat!.toStringAsFixed(6)},${_animLng!.toStringAsFixed(6)} b=${_animBearing!.toStringAsFixed(1)} latencyMs=${latencyMs.toInt()}');
+    //if (debug) debugPrint('[MapLogic] tick α=${(_tau).toStringAsFixed(3)} buf=${_buffer.length} anim=${_animLat!.toStringAsFixed(6)},${_animLng!.toStringAsFixed(6)} b=${_animBearing!.toStringAsFixed(1)} latencyMs=${latencyMs.toInt()}');
     try { onUpdate?.call(); } catch (_) {}
   }
 
@@ -661,5 +786,4 @@ class MapLogicHandler {
   }
 
 
-  }
-
+}

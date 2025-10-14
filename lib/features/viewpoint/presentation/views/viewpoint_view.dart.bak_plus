@@ -9,7 +9,6 @@ import 'package:guide_me/features/viewpoint/domain/entity/viewpoint.dart';
 import 'package:guide_me/features/viewpoint/viewpoint_backend.dart';
 import 'package:guide_me/features/viewpoint/data/rating_service.dart';
 import 'package:guide_me/features/viewpoint/presentation/widgets/viewpoint_card_widget.dart';
-import 'viewpoint_add_view.dart';
 
 class ViewpointView extends StatefulWidget {
   const ViewpointView({super.key});

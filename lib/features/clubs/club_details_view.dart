@@ -1,4 +1,4 @@
-import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -13,9 +13,8 @@ class ClubDetailsView extends StatefulWidget {
 
 class _ClubDetailsViewState extends State<ClubDetailsView> {
   final supabase = Supabase.instance.client;
-
-  List<Map<String, dynamic>> members = [];
   bool isLoading = true;
+  List<Map<String, dynamic>> members = [];
 
   @override
   void initState() {
@@ -24,181 +23,87 @@ class _ClubDetailsViewState extends State<ClubDetailsView> {
   }
 
   Future<void> fetchMembers() async {
-    final response = await supabase
-        .from('club_members')
-        .select('role, users(nickname, avatar, account_lvl)')
-        .eq('club_id', widget.club['id']);
-
-    setState(() {
-      members = List<Map<String, dynamic>>.from(response);
-      isLoading = false;
-    });
+    setState(() { isLoading = true; members = []; });
+    try {
+      // Try to fetch members and join user info. Adjust relation name if necessary.
+      final res = await supabase
+          .from('clubs_members')
+          .select('id, rola, user_id, users!fk_clubs_members_user(nickname, avatar, account_lvl)')
+          .eq('club_id', widget.club['id']);
+      if (res != null && res is List) {
+        List<Map<String,dynamic>> list = [];
+        for (final r in res) {
+          final user = r['users'] ?? {};
+          list.add({
+            'id': r['id'],
+            'user_id': r['user_id'],
+            'rola': r['rola'],
+            'nickname': user['nickname'] ?? '',
+            'avatar': user['avatar'] ?? '',
+            'account_lvl': user['account_lvl'] ?? 0,
+          });
+        }
+        setState(() { members = list; isLoading = false; });
+      } else {
+        setState(() { members = []; isLoading = false; });
+      }
+    } catch (e) {
+      debugPrint('fetchMembers error: $e');
+      setState(() { members = []; isLoading = false; });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final club = widget.club;
-
+    final bg = const Color(0xFF03121A);
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      backgroundColor: Colors.black,
+      backgroundColor: bg,
       appBar: AppBar(
-        title: const Text("Szczegóły klubu", style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.transparent,
-        iconTheme: const IconThemeData(color: Colors.white),
-        elevation: 0,
+        title: Text(widget.club['name'] ?? 'Szczegóły klubu'),
       ),
-      body: Stack(
-        children: [
-          // Tło z blur i ciemnym overlayem
-          Container(
-            decoration: const BoxDecoration(
-              image: DecorationImage(
-                image: NetworkImage(
-                  "https://wallpapers.com/images/hd/gang-pictures-i2z8fn6lsh9v85uv.jpg",
-                ),
-                fit: BoxFit.cover,
-              ),
-            ),
-          ),
-          BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-            child: Container(color: Colors.black.withOpacity(0.75)),
-          ),
-          // Zawartość
-          ListView(
-            padding: const EdgeInsets.only(top: kToolbarHeight + 24, bottom: 32),
-            children: [
-              _buildHeader(club),
-              if (club['bio'] != null && club['bio'].toString().trim().isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  child: Text(
-                    club['bio'],
-                    style: const TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                ),
-              _buildStats(),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                child: Text("Członkowie", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-              ),
-              if (isLoading)
-                const Center(child: CircularProgressIndicator())
-              else if (members.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20),
-                  child: Text("Brak członków.", style: TextStyle(color: Colors.white70)),
-                )
-              else
-                ...members.map((member) {
-                  final user = member['users'];
-                  final avatar = user['avatar'];
-                  return ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.white10,
-                      backgroundImage: avatar != null && avatar != ""
-                          ? NetworkImage(avatar)
-                          : null,
-                      child: avatar == null || avatar == ""
-                          ? const Icon(Icons.person, color: Colors.white)
-                          : null,
-                    ),
-                    title: Text(user['nickname'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
-                    subtitle: Text(
-                      "Poziom ${user['account_lvl']}",
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                    trailing: Text(
-                      member['role'],
-                      style: TextStyle(
-                        color: member['role'] == 'Lider'
-                            ? Colors.amber
-                            : member['role'] == 'Zastępca'
-                                ? Colors.blueAccent
-                                : Colors.white54,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  );
-                }).toList(),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader(Map club) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.grey[900]!.withOpacity(0.8),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          children: [
-            const CircleAvatar(
-              radius: 30,
-              backgroundColor: Colors.white12,
-              child: Icon(Icons.flag, color: Colors.white),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator(color: Colors.white))
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(club['name'],
-                      style: const TextStyle(fontSize: 20, color: Colors.white, fontWeight: FontWeight.bold)),
+                  // header
+                  Row(
+                    children: [
+                      CircleAvatar(radius: 36, backgroundImage: NetworkImage(widget.club['logo_url'] ?? '')),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text(widget.club['name'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold))),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(widget.club['bio'] ?? '', style: const TextStyle(color: Colors.white70)),
+                  const SizedBox(height: 18),
+                  const Text('Członkowie', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  if (members.isEmpty) const Text('Brak członków', style: TextStyle(color: Colors.white70)) else ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: members.length,
+                    separatorBuilder: (_,__) => const Divider(color: Colors.white10),
+                    itemBuilder: (context, index) {
+                      final m = members[index];
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        leading: CircleAvatar(
+                          backgroundImage: m['avatar'] != '' ? NetworkImage(m['avatar']) : null,
+                          backgroundColor: Colors.white10,
+                          child: (m['avatar']==null || m['avatar']=='') ? const Icon(Icons.person, color: Colors.white) : null,
+                        ),
+                        title: Text(m['nickname'] ?? '', style: const TextStyle(color: Colors.white)),
+                        subtitle: Text('Lvl ${m['account_lvl'] ?? 0} – ${m['rola'] ?? ''}', style: const TextStyle(color: Colors.white70)),
+                      );
+                    },
+                  ),
                 ],
               ),
-            )
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStats() {
-    if (members.isEmpty) return const SizedBox();
-
-    final totalLevel = members.fold<int>(
-      0,
-      (sum, m) => sum + ((m['users']['account_lvl'] ?? 0) as num).toInt(),
-    );
-    final avgLvl = (totalLevel / members.length).toStringAsFixed(1);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.grey[850],
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          children: [
-            _statRow("Liczba członków", "${members.length}"),
-            _statRow("Średni poziom", "$avgLvl"),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _statRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: Colors.white)),
-          Text(value, style: const TextStyle(color: Colors.white70)),
-        ],
-      ),
+            ),
     );
   }
 }

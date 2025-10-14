@@ -193,6 +193,10 @@ class _InstagramPostyViewState extends State<InstagramPostyView>
                         child: CachedNetworkImage(
                           imageUrl: imageUrl,
                           fit: BoxFit.cover,
+                          memCacheWidth: 400,
+                          memCacheHeight: 400,
+                          maxWidthDiskCache: 600,
+                          maxHeightDiskCache: 600,
                           placeholder: (context, url) =>
                               Container(color: Colors.black12),
                           errorWidget: (context, error, stackTrace) =>

@@ -456,9 +456,9 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> with Single
 
   Widget _buildMap() {
     return mb.MapboxMap(scrollGesturesEnabled: false, /*scroll-inserted*/
+
       accessToken: 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg',
       initialCameraPosition: mb.CameraPosition(target: widget.origin, zoom: 18, bearing: 0.0, tilt: 75.0),
-      styleUri: 'mapbox://styles/bosiuuq/cmgf5xezs00i701sec30chpp0',
       onMapCreated: (controller) async {
         _mapLogic.onMapCreated(controller);
         WidgetsBinding.instance.addPostFrameCallback((_) => _addRouteLineIfNeeded());

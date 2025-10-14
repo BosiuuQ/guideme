@@ -21,7 +21,15 @@ class _AchievementsTabWidgetState extends State<AchievementsTabWidget>
   Map<String, dynamic>? currentKm;
   Map<String, dynamic>? nextKm;
 
+  Map<String, dynamic>? currentPosts;
+  Map<String, dynamic>? nextPosts;
+
+  Map<String, dynamic>? currentViewpoints;
+  Map<String, dynamic>? nextViewpoints;
+
   double totalKm = 0;
+  int totalPosts = 0;
+  int totalViewpoints = 0;
   bool loading = true;
 
   @override
@@ -49,6 +57,20 @@ class _AchievementsTabWidgetState extends State<AchievementsTabWidget>
 
       totalKm = ((distanceRes?['total_km']) as num?)?.toDouble() ?? 0.0;
 
+      // Liczba postów
+      final postsRes = await client
+          .from('instagram_posty')
+          .select('id')
+          .eq('user_id', userId);
+      totalPosts = (postsRes as List).length;
+
+      // Liczba punktów widokowych
+      final viewpointsRes = await client
+          .from('punkty_widokowe')
+          .select('id')
+          .eq('author_id', userId);
+      totalViewpoints = (viewpointsRes as List).length;
+
       // Odblokowane osiągnięcia
       final unlockedRes = await client
           .from('user_achievements')
@@ -69,10 +91,42 @@ class _AchievementsTabWidgetState extends State<AchievementsTabWidget>
       _assignCurrentAndNext(
         kmList as List<dynamic>,
         unlockedIds,
-        totalKm,
+        totalKm.toDouble(),
         (current, next) {
           currentKm = current;
           nextKm = next;
+        },
+      );
+
+      // Lista progów postów
+      final postsList = await client
+          .from('achievements_posts')
+          .select()
+          .order('required_posts', ascending: true);
+
+      _assignCurrentAndNext(
+        postsList as List<dynamic>,
+        unlockedIds,
+        totalPosts.toDouble(),
+        (current, next) {
+          currentPosts = current;
+          nextPosts = next;
+        },
+      );
+
+      // Lista progów punktów widokowych
+      final viewpointsList = await client
+          .from('achievements_viewpoints')
+          .select()
+          .order('required_points', ascending: true);
+
+      _assignCurrentAndNext(
+        viewpointsList as List<dynamic>,
+        unlockedIds,
+        totalViewpoints.toDouble(),
+        (current, next) {
+          currentViewpoints = current;
+          nextViewpoints = next;
         },
       );
     } catch (e) {
@@ -120,11 +174,13 @@ class _AchievementsTabWidgetState extends State<AchievementsTabWidget>
     required Map<String, dynamic>? next,
     required double value,
     required Icon icon,
+    required String unit,
+    required String fieldName,
   }) {
-    final requiredKm =
-        ((next ?? current)?['required_km'] as num?)?.toDouble() ?? 1.0;
-    final remaining = (requiredKm - value).clamp(0, requiredKm);
-    final percent = (value / requiredKm).clamp(0.0, 1.0);
+    final requiredValue =
+        ((next ?? current)?[fieldName] as num?)?.toDouble() ?? 1.0;
+    final remaining = (requiredValue - value).clamp(0, requiredValue);
+    final percent = (value / requiredValue).clamp(0.0, 1.0);
 
     showDialog(
       context: context,
@@ -159,7 +215,7 @@ class _AchievementsTabWidgetState extends State<AchievementsTabWidget>
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  "${value.toStringAsFixed(2)} km zdobyte",
+                  "${value.toStringAsFixed(unit == 'km' ? 2 : 0)} $unit zdobyte",
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.white70, fontSize: 14),
                 ),
@@ -174,7 +230,7 @@ class _AchievementsTabWidgetState extends State<AchievementsTabWidget>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  "${value.toStringAsFixed(2)} / ${requiredKm.toStringAsFixed(0)} km",
+                  "${value.toStringAsFixed(unit == 'km' ? 2 : 0)} / ${requiredValue.toStringAsFixed(0)} $unit",
                   style: const TextStyle(color: Colors.white60, fontSize: 13),
                 ),
                 const SizedBox(height: 16),
@@ -183,7 +239,7 @@ class _AchievementsTabWidgetState extends State<AchievementsTabWidget>
                       style: const TextStyle(color: Colors.white)),
                   const SizedBox(height: 4),
                   Text(
-                    "Brakuje ci jeszcze ${remaining.toStringAsFixed(2)} km",
+                    "Brakuje ci jeszcze ${remaining.toStringAsFixed(unit == 'km' ? 2 : 0)} $unit",
                     style: const TextStyle(color: Colors.white38),
                   ),
                 ],
@@ -206,19 +262,50 @@ class _AchievementsTabWidgetState extends State<AchievementsTabWidget>
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Wrap(
+        alignment: WrapAlignment.center,
         spacing: 16,
         runSpacing: 16,
         children: [
-          if (currentKm != null)
+          if (currentKm != null || nextKm != null)
             AchievementCardWidget(
               icon: const Icon(Icons.speed, size: 36, color: Colors.cyan),
-              title: currentKm!['title'],
-              description: currentKm!['description'],
+              title: (currentKm ?? nextKm)!['title'],
+              description: (currentKm ?? nextKm)!['description'],
               onTap: () => _showModal(
                 current: currentKm,
                 next: nextKm,
                 value: totalKm,
                 icon: const Icon(Icons.speed, size: 36, color: Colors.cyan),
+                unit: 'km',
+                fieldName: 'required_km',
+              ),
+            ),
+          if (currentPosts != null || nextPosts != null)
+            AchievementCardWidget(
+              icon: const Icon(Icons.camera_alt, size: 36, color: Colors.pink),
+              title: (currentPosts ?? nextPosts)!['title'],
+              description: (currentPosts ?? nextPosts)!['description'],
+              onTap: () => _showModal(
+                current: currentPosts,
+                next: nextPosts,
+                value: totalPosts.toDouble(),
+                icon: const Icon(Icons.camera_alt, size: 36, color: Colors.pink),
+                unit: 'postów',
+                fieldName: 'required_posts',
+              ),
+            ),
+          if (currentViewpoints != null || nextViewpoints != null)
+            AchievementCardWidget(
+              icon: const Icon(Icons.location_on, size: 36, color: Colors.orange),
+              title: (currentViewpoints ?? nextViewpoints)!['title'],
+              description: (currentViewpoints ?? nextViewpoints)!['description'],
+              onTap: () => _showModal(
+                current: currentViewpoints,
+                next: nextViewpoints,
+                value: totalViewpoints.toDouble(),
+                icon: const Icon(Icons.location_on, size: 36, color: Colors.orange),
+                unit: 'punktów',
+                fieldName: 'required_points',
               ),
             ),
         ],

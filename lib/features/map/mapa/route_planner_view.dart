@@ -197,6 +197,7 @@ class _RoutePlannerViewState extends State<RoutePlannerView> {
                             mb.MapboxMap(
                               accessToken: _mapboxToken,
                               initialCameraPosition: mb.CameraPosition(target: widget.origin, zoom: 14.0),
+                              styleUri: 'mapbox://styles/bosiuuq/cmgf5xezs00i701sec30chpp0',
                               onMapCreated: (c) {
                                 _controller = c;
                                 _fitMapToRoute();

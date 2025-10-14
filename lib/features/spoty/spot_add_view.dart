@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import 'package:guide_me/features/spoty/spoty_backend.dart' as backend;
 import 'package:guide_me/mapbox_shim.dart' as mb;
 import 'package:go_router/go_router.dart';
+import 'package:guide_me/core/utils/image_compression_helper.dart';
 
 class SpotAddView extends StatefulWidget {
   const SpotAddView({super.key});
@@ -79,8 +80,19 @@ class _SpotAddViewState extends State<SpotAddView> {
     try {
       final userId = supabase.auth.currentUser?.id;
       if (userId == null) return null;
-      final fileName = 'spot_${const Uuid().v4()}_${DateTime.now().millisecondsSinceEpoch}.png';
-      final bytes = await file.readAsBytes();
+      
+      // compress image before upload
+      final compressedFile = await ImageCompressionHelper.compressImage(
+        file,
+        quality: 85,
+        maxWidth: 1920,
+        maxHeight: 1920,
+      );
+      
+      final fileToUpload = compressedFile ?? file;
+      
+      final fileName = 'spot_${const Uuid().v4()}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final bytes = await fileToUpload.readAsBytes();
       await supabase.storage.from('instaguide').uploadBinary(fileName, bytes);
       final publicUrl = supabase.storage.from('instaguide').getPublicUrl(fileName);
       return publicUrl;

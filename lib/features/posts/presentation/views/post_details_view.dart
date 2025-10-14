@@ -144,8 +144,8 @@ class _PostDetailsViewState extends State<PostDetailsView> {
         c['liked_by_me'] = !liked;
         c['likes_count'] = liked ? (likes - 1).clamp(0, 999999) : likes + 1;
       });
-      // Backend toggle (odkomentuj gdy gotowe po stronie SQL)
-      // await InstagramBackend.likeComment(commentId);
+      // Backend toggle
+      await InstagramBackend.likeComment(commentId);
       if (mounted) setState(() {});
     } finally {
       if (mounted) setState(() => _isLikingComment = false);

@@ -164,7 +164,7 @@ class _MainMapWidgetState extends State<MainMapWidget> with SingleTickerProvider
                   height: 40,
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    padding: const EdgeInsets.symmetric(horizontal: 0),
                     child: Row(
                       children: [
                         buildTagDark(Icons.camera_alt_rounded, 'Spoty', () {

@@ -51,6 +51,8 @@ class AchievementCardWidget extends StatelessWidget {
             Text(
               description,
               textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontSize: 11,
                 color: Colors.white60,

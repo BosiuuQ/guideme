@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_rating_bar/flutter_rating_bar.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:guide_me/mapbox_shim.dart' as mb;
-import 'package:guide_me/features/map/mapa/route_planner_view.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 
@@ -376,39 +374,20 @@ class _ViewpointDetailsViewState extends State<ViewpointDetailsView> {
             children: [
               Text("Śr. ocena: ${avgRating.toStringAsFixed(1)}",
                   style: const TextStyle(color: Colors.white, fontSize: 16)),
-              Row(
-                children: [
-                  RatingBar.builder(
-                    initialRating: myRating.toDouble(),
-                    minRating: 1,
-                    allowHalfRating: false,
-                    itemCount: 5,
-                    itemSize: 24,
-                    unratedColor: Colors.white24,
-                    itemBuilder: (context, _) => const Icon(Icons.star, color: Colors.amber),
-                    onRatingUpdate: (value) async {
-                      await RatingService().rateViewpoint(widget.viewpoint.id, value.toInt());
-                      myRating = value.toInt();
-                      avgRating = await RatingService().getAverageRating(widget.viewpoint.id);
-                      if (mounted) setState(() {});
-                    },
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton(
-                    onPressed: () async {
-                      try {
-                        final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-                        final origin = mb.LatLng(pos.latitude, pos.longitude);
-                        final dest = mb.LatLng(widget.viewpoint.coordinates.y, widget.viewpoint.coordinates.x);
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => RoutePlannerView(origin: origin, destination: dest, title: widget.viewpoint.title)));
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nie można uzyskać lokalizacji')));
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00BCD4), foregroundColor: Colors.black),
-                    child: const Text('Nawiguj'),
-                  ),
-                ],
+              RatingBar.builder(
+                initialRating: myRating.toDouble(),
+                minRating: 1,
+                allowHalfRating: false,
+                itemCount: 5,
+                itemSize: 24,
+                unratedColor: Colors.white24,
+                itemBuilder: (context, _) => const Icon(Icons.star, color: Colors.amber),
+                onRatingUpdate: (value) async {
+                  await RatingService().rateViewpoint(widget.viewpoint.id, value.toInt());
+                  myRating = value.toInt();
+                  avgRating = await RatingService().getAverageRating(widget.viewpoint.id);
+                  if (mounted) setState(() {});
+                },
               ),
             ],
           ),

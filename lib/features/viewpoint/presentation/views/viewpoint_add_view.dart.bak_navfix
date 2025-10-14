@@ -29,10 +29,13 @@ class _ViewpointAddViewState extends State<ViewpointAddView> {
   mb.Symbol? _modalLocationSymbol;
   mb.LatLng? _pickedLocation;
 
+  // Map/location picker variables
+  mb.LatLng? _pickedLocation;
+  mb.MapboxMapController? _modalMapController;
+  mb.Symbol? _modalLocationSymbol;
+
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _titleController = TextEditingController();
-  // helper used to allow map interaction while inside ListView
-  bool _listScrollable = true;
   final TextEditingController _descriptionController = TextEditingController();
 
   File? _imageFile;
@@ -149,15 +152,15 @@ class _ViewpointAddViewState extends State<ViewpointAddView> {
                   SizedBox(height: 8),
                   Text(
                     '• Motoryzacja na pierwszym planie, ale inne tematy są OK, byle w klimacie społeczności.\n'
-                        '• Szacunek i zero spamu – bez wyzwisk, nękania, floodu, clickbaitu.\n'
-                        '• Twoje treści – publikuj tylko materiały, do których masz prawa/zgody.\n'
-                        '• Prywatność – nie ujawniaj danych osobowych; zamazuj twarze bez zgody.\n'
-                        '• Bezpieczeństwo – nie promuj nielegalnych/brawurowych zachowań; jeśli teren prywatny/tor – zaznacz to w opisie.\n'
-                        '• Treści wrażliwe – bez drastyki; edukacyjne materiały oznacz ostrzeżeniem.\n'
-                        '• Reklamy i sprzedaż – oznacz #reklama / #współpraca; zakaz nielegalnych ofert.\n'
-                        '• Lokalizacje – nie podawaj dokładnych adresów prywatnych (garaże, domy).\n'
-                        '• Moderacja – treści niezgodne mogą być ukryte/usunięte; powtarzające się naruszenia = blokada.\n'
-                        '• Zgłaszanie – ••• → Zgłoś (spam/nienawiść/bezpieczeństwo/prawa aut.).',
+                    '• Szacunek i zero spamu – bez wyzwisk, nękania, floodu, clickbaitu.\n'
+                    '• Twoje treści – publikuj tylko materiały, do których masz prawa/zgody.\n'
+                    '• Prywatność – nie ujawniaj danych osobowych; zamazuj twarze bez zgody.\n'
+                    '• Bezpieczeństwo – nie promuj nielegalnych/brawurowych zachowań; jeśli teren prywatny/tor – zaznacz to w opisie.\n'
+                    '• Treści wrażliwe – bez drastyki; edukacyjne materiały oznacz ostrzeżeniem.\n'
+                    '• Reklamy i sprzedaż – oznacz #reklama / #współpraca; zakaz nielegalnych ofert.\n'
+                    '• Lokalizacje – nie podawaj dokładnych adresów prywatnych (garaże, domy).\n'
+                    '• Moderacja – treści niezgodne mogą być ukryte/usunięte; powtarzające się naruszenia = blokada.\n'
+                    '• Zgłaszanie – ••• → Zgłoś (spam/nienawiść/bezpieczeństwo/prawa aut.).',
                     style: TextStyle(color: Colors.white70, height: 1.4),
                   ),
                 ],
@@ -303,63 +306,63 @@ class _ViewpointAddViewState extends State<ViewpointAddView> {
                         ),
                         child: _imageFile == null
                             ? Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white.withOpacity(0.1)),
-                              ),
-                              child: const Icon(Icons.add_a_photo_rounded,
-                                  size: 42, color: Colors.white70),
-                            ),
-                            const SizedBox(height: 10),
-                            const Text(
-                              'Dodaj zdjęcie punktu',
-                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Pokaż klimat miejsca.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.65),
-                                fontSize: 12.5,
-                              ),
-                            ),
-                          ],
-                        )
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.white.withOpacity(0.1)),
+                                    ),
+                                    child: const Icon(Icons.add_a_photo_rounded,
+                                        size: 42, color: Colors.white70),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  const Text(
+                                    'Dodaj zdjęcie punktu',
+                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'Pokaż klimat miejsca.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.65),
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
+                                ],
+                              )
                             : Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.file(
-                                _imageFile!,
-                                height: 230,
-                                fit: BoxFit.cover,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.file(
+                                      _imageFile!,
+                                      height: 230,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      TextButton.icon(
+                                        onPressed: _cropCurrentImage,
+                                        icon: const Icon(Icons.crop),
+                                        label: const Text('Przytnij'),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      TextButton.icon(
+                                        onPressed: _pickImage,
+                                        icon: const Icon(Icons.swap_horiz_rounded),
+                                        label: const Text('Zmień zdjęcie'),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
-                            ),
-                            const SizedBox(height: 10),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                TextButton.icon(
-                                  onPressed: _cropCurrentImage,
-                                  icon: const Icon(Icons.crop),
-                                  label: const Text('Przytnij'),
-                                ),
-                                const SizedBox(width: 8),
-                                TextButton.icon(
-                                  onPressed: _pickImage,
-                                  icon: const Icon(Icons.swap_horiz_rounded),
-                                  label: const Text('Zmień zdjęcie'),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
                       ),
                     ),
 
@@ -391,227 +394,127 @@ class _ViewpointAddViewState extends State<ViewpointAddView> {
                               onChanged: (_) => setState(() {}),
                             ),
                             const SizedBox(height: 12),
-
-                            // Label for minimap (replaces previous input + button above the map)
-                            Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                'Lokalizacja',
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.9),
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                    // Lokalizacja field (wybór na mapie)
+                    Row(
+                      children: [
+                        Expanded(child: TextFormField(
+                          readOnly: true,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            labelText: "Lokalizacja",
+                            labelStyle: TextStyle(color: Colors.white.withOpacity(0.8)),
+                            hintText: _pickedLocation == null ? "Brak" : "${_pickedLocation!.latitude.toStringAsFixed(5)}, ${_pickedLocation!.longitude.toStringAsFixed(5)}",
+                            hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                            border: InputBorder.none,
+                          ),
+                          validator: (v) => _pickedLocation == null ? 'Wybierz lokalizację' : null,
+                        )),
+                        const SizedBox(width: 8),
+                        ElevatedButton(onPressed: _openFullScreenMap, child: const Text('Wybierz'))
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _descriptionController,
+                              style: const TextStyle(color: Colors.white),
+                              maxLines: 4,
+                              minLines: 3,
+                              decoration: InputDecoration(
+                                labelText: "Opis",
+                                labelStyle: TextStyle(color: Colors.white.withOpacity(0.8)),
+                                hintText: "Co warto wiedzieć? Jak dojechać? Tor/spot/prywatny teren?",
+                                hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+                                border: InputBorder.none,
                               ),
-                            ),
-                            const SizedBox(height: 8),
-
-                            // small map - wrapped in Listener so gestures reach the map but we temporarily disable list scrolling
-                            SizedBox(
-                              height: 220,
-                              child: Listener(
-                                behavior: HitTestBehavior.translucent,
-                                onPointerDown: (_) { setState(() => _listScrollable = false); },
-                                onPointerCancel: (_) { setState(() => _listScrollable = true); },
-                                onPointerUp: (_) { setState(() => _listScrollable = true); },
-                                child: Stack(
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(12),
-                                      child: mb.MapboxMap(
-                                        accessToken: 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg',
-                                        initialCameraPosition: mb.CameraPosition(target: _pickedLocation ?? (_currentLatLng ?? mb.LatLng(52.2297,21.0122)), zoom: 13),
-                                        styleUri: 'mapbox://styles/bosiuuq/cmgf5xezs00i701sec30chpp0',
-                                        zoomGesturesEnabled: true,
-                                        scrollGesturesEnabled: true,
-                                        rotateGesturesEnabled: true,
-                                        onMapCreated: (controller) async {
-                                          _mapController = controller;
-                                          try { await _mapController!.initManagers(); } catch (_) {}
-                                          if (_currentLatLng == null) {
-                                            try {
-                                              final pos = await Geolocator.getCurrentPosition();
-                                              _currentLatLng = mb.LatLng(pos.latitude, pos.longitude);
-                                            } catch (_) {}
-                                          }
-                                          if (_currentLatLng != null) {
-                                            try {
-                                              await _mapController!.addSymbol(mb.SymbolOptions(geometry: _currentLatLng!, iconImage: 'assets/icons/marker.png', iconSize: 0.12));
-                                              await _mapController!.moveCameraImmediate(_currentLatLng!, 14.0);
-                                            } catch (_) {}
-                                          }
-                                        },
-                                        onTap: (latlng) async {
-                                          setState(() { _pickedLocation = latlng; });
-                                          if (_mapController != null) {
-                                            if (_locationSymbol == null) {
-                                              _locationSymbol = await _mapController!.addSymbol(mb.SymbolOptions(geometry: latlng, iconImage: 'assets/icons/dest_pin.png', iconSize: 0.18));
-                                            } else {
-                                              await _mapController!.updateSymbolImmediate(_locationSymbol!, latlng);
-                                            }
-                                          }
-                                        },
-                                        myLocationEnabled: false,
-                                        trackCameraPosition: true,
-                                      ),
-                                    ),
-                                    Positioned(
-                                      top: 8,
-                                      right: 8,
-                                      child: SafeArea(
-                                        child: ElevatedButton(
-                                          onPressed: _openFullScreenMap,
-                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.black54, foregroundColor: Colors.white),
-                                          child: const Text('Pełny ekran'),
-                                        ),
-                                      ),
-                                    )
-                                  ],
-                                ),
-                              ),
-                            ),
-
-                            const SizedBox(height: 8),
-
-                            // Row with "Użyj mojej pozycji" (left) and selected coords (right, expanded)
-                            Row(
-                              children: [
-                                ElevatedButton(
-                                  onPressed: _useMyLocation,
-                                  child: const Text('Użyj mojej pozycji'),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: _pickedLocation != null
-                                      ? Text(
-                                    'Wybrano: ${_pickedLocation!.latitude.toStringAsFixed(5)}, ${_pickedLocation!.longitude.toStringAsFixed(5)}',
-                                    style: const TextStyle(color: Colors.white70),
-                                    overflow: TextOverflow.ellipsis,
-                                  )
-                                      : const SizedBox.shrink(),
-                                ),
-                              ],
-                            ),
-
-                            const SizedBox(height: 14),
-
-                            // Formularz (opis)
-                            Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.035),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: Colors.white.withOpacity(0.08)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  TextFormField(
-                                    controller: _descriptionController,
-                                    style: const TextStyle(color: Colors.white),
-                                    maxLines: 4,
-                                    minLines: 3,
-                                    decoration: InputDecoration(
-                                      labelText: "Opis",
-                                      labelStyle: TextStyle(color: Colors.white.withOpacity(0.8)),
-                                      hintText: "Co warto wiedzieć? Jak dojechać? Tor/spot/prywatny teren?",
-                                      hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-                                      border: InputBorder.none,
-                                    ),
-                                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Wpisz opis' : null,
-                                    onChanged: (_) => setState(() {}),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            const SizedBox(height: 14),
-
-                            // Mini zasady + checkbox
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.035),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: Colors.white.withOpacity(0.08)),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Mini-zasady',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    '• Szacunek, zero spamu i clickbaitu\n'
-                                        '• Twoje treści – miej prawa/zgody\n'
-                                        '• Prywatność – zamazuj twarze\n'
-                                        '• Bezpieczeństwo – nie promuj łamania prawa',
-                                    style: TextStyle(
-                                      color: Colors.white.withOpacity(0.7),
-                                      height: 1.35,
-                                      fontSize: 12.5,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: TextButton.icon(
-                                      onPressed: _showRulesSheet,
-                                      icon: const Icon(Icons.rule, size: 18),
-                                      label: const Text('Pełne zasady'),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      Checkbox(
-                                        value: _acceptedRules,
-                                        onChanged: (v) => setState(() => _acceptedRules = v ?? false),
-                                        activeColor: Colors.lightBlueAccent,
-                                      ),
-                                      const Expanded(
-                                        child: Text(
-                                          'Potwierdzam zgodność z zasadami i prawa do treści.',
-                                          style: TextStyle(color: Colors.white70, fontSize: 12.5),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            const SizedBox(height: 18),
-
-                            // Submit
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton.icon(
-                                onPressed: canSubmit ? _submit : null,
-                                icon: _isLoading
-                                    ? const SizedBox(
-                                  height: 18,
-                                  width: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                                    : const Icon(Icons.add_location_alt_rounded),
-                                label: const Text('Dodaj punkt'),
-                                style: ElevatedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                ),
-                              ),
+                              validator: (v) => (v == null || v.trim().isEmpty) ? 'Wpisz opis' : null,
+                              onChanged: (_) => setState(() {}),
                             ),
                           ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    // Mini zasady + checkbox
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.035),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withOpacity(0.08)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Mini-zasady',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                              )),
+                          const SizedBox(height: 8),
+                          Text(
+                            '• Szacunek, zero spamu i clickbaitu\n'
+                            '• Twoje treści – miej prawa/zgody\n'
+                            '• Prywatność – zamazuj twarze\n'
+                            '• Bezpieczeństwo – nie promuj łamania prawa',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.7),
+                              height: 1.35,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: TextButton.icon(
+                              onPressed: _showRulesSheet,
+                              icon: const Icon(Icons.rule, size: 18),
+                              label: const Text('Pełne zasady'),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Checkbox(
+                                value: _acceptedRules,
+                                onChanged: (v) => setState(() => _acceptedRules = v ?? false),
+                                activeColor: Colors.lightBlueAccent,
+                              ),
+                              const Expanded(
+                                child: Text(
+                                  'Potwierdzam zgodność z zasadami i prawa do treści.',
+                                  style: TextStyle(color: Colors.white70, fontSize: 12.5),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 18),
+
+                    // Submit
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: canSubmit ? _submit : null,
+                        icon: _isLoading
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.add_location_alt_rounded),
+                        label: const Text('Dodaj punkt'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                         ),
                       ),
                     ),
@@ -624,28 +527,6 @@ class _ViewpointAddViewState extends State<ViewpointAddView> {
       ),
     );
   }
-
-  // Use my location helper (copied behaviour)
-  Future<void> _useMyLocation() async {
-    try {
-      final permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) return;
-      final pos = await Geolocator.getCurrentPosition();
-      final latlng = mb.LatLng(pos.latitude, pos.longitude);
-      setState(() { _pickedLocation = latlng; });
-      if (_mapController != null) {
-        if (_locationSymbol == null) {
-          _locationSymbol = await _mapController!.addSymbol(mb.SymbolOptions(geometry: latlng, iconImage: 'assets/icons/marker.png', iconSize: 0.12));
-        } else {
-          await _mapController!.updateSymbolImmediate(_locationSymbol!, latlng);
-        }
-        await _mapController!.moveCameraImmediate(latlng, 14.0);
-      }
-    } catch (e) {
-      debugPrint('Error getting location: $e');
-    }
-  }
-
   Future<void> _openFullScreenMap() async {
     final mb.LatLng? chosen = await showModalBottomSheet<mb.LatLng>(
       context: context,
@@ -779,4 +660,5 @@ class _ViewpointAddViewState extends State<ViewpointAddView> {
       });
     }
   }
+
 }

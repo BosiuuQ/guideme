@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:guide_me/features/posts/instagram_backend.dart';
 import 'package:guide_me/core/config/routing/app_routes.dart';
+import 'package:guide_me/core/utils/image_compression_helper.dart';
 
 class PostAddView extends StatefulWidget {
   const PostAddView({Key? key}) : super(key: key);
@@ -28,7 +29,7 @@ class _PostAddViewState extends State<PostAddView> {
     final pickedFile = await _picker.pickImage(
       source: ImageSource.gallery,
       imageQuality: 95,
-      maxWidth: 4096,
+      maxWidth: 2048,
     );
     if (pickedFile != null) {
       setState(() => _selectedImage = File(pickedFile.path));
@@ -54,12 +55,21 @@ class _PostAddViewState extends State<PostAddView> {
 
     setState(() => _isSubmitting = true);
     try {
+      // compress image before upload
+      final compressedFile = await ImageCompressionHelper.compressImage(
+        _selectedImage!,
+        quality: 85,
+        maxWidth: 1920,
+        maxHeight: 1920,
+      );
+      
+      final fileToUpload = compressedFile ?? _selectedImage!;
+      
       // upload do storage
-      final fileExt = _selectedImage!.path.split('.').last;
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
       final path = 'posts/$fileName';
 
-      final bytes = await _selectedImage!.readAsBytes();
+      final bytes = await fileToUpload.readAsBytes();
       await supabase.storage.from('instaguide').uploadBinary(path, bytes);
       final publicUrl = supabase.storage.from('instaguide').getPublicUrl(path);
 

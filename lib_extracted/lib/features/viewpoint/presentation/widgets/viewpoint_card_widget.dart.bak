@@ -3,9 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:guide_me/core/constants/app_colors.dart';
 import 'package:guide_me/features/viewpoint/domain/entity/viewpoint.dart';
 import 'package:guide_me/features/viewpoint/viewpoint_backend.dart';
-import 'package:guide_me/mapbox_shim.dart' as mb;
-import 'package:guide_me/features/map/mapa/route_planner_view.dart';
-import 'package:geolocator/geolocator.dart';
 
 class ViewpointCardWidget extends StatefulWidget {
   final Viewpoint viewpoint;
@@ -89,18 +86,9 @@ class _ViewpointCardWidgetState extends State<ViewpointCardWidget> {
                     padding: const EdgeInsets.all(8.0),
                     child: Row(
                       children: [
-                        _iconCircleButton(icon: Icons.navigation_outlined, onTap: () async {
-                try {
-                  final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-                  final origin = mb.LatLng(pos.latitude, pos.longitude);
-                  final dest = mb.LatLng(widget.viewpoint.coordinates.y, widget.viewpoint.coordinates.x);
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => RoutePlannerView(origin: origin, destination: dest, title: widget.viewpoint.title)));
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nie można uzyskać lokalizacji')));
-                }
-              }),
+                        _iconCircleButton(icon: Icons.navigation_rounded, onTap: () {}),
                         const SizedBox(width: 4),
-                        
+                        _iconCircleButton(icon: Icons.share, onTap: () {}),
                       ],
                     ),
                   ),

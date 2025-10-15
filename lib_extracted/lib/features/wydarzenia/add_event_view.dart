@@ -26,8 +26,8 @@ class _AddEventViewState extends State<AddEventView> {
   Future<DateTime?> _pickDateTime(BuildContext context) async {
     final date = await showDatePicker(
       context: context,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      firstDate: DateTime(1900, 1, 1),
+      lastDate: DateTime(2100, 12, 31).add(const Duration(days: 365)),
       initialDate: DateTime.now(),
     );
 

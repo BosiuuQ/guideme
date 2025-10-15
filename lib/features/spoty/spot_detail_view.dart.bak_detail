@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:intl/intl.dart';
 
 class SpotDetailView extends StatefulWidget {
   final Map<String, dynamic> spot;
@@ -18,7 +16,6 @@ class _SpotDetailViewState extends State<SpotDetailView> {
   bool _isAuthor = false;
   List<Map<String, dynamic>> _participantsProfiles = [];
   Map<String, dynamic>? _authorProfile;
-  String? _distanceText;
 
   @override
   void initState() {
@@ -64,29 +61,7 @@ class _SpotDetailViewState extends State<SpotDetailView> {
       _authorProfile = profile;
     }
 
-    await _computeDistance();
     setState(() {});
-  }
-
-
-
-  Future<void> _computeDistance() async {
-    try {
-      if (widget.spot['lat'] == null || widget.spot['lng'] == null) return;
-      final pos = await Geolocator.getCurrentPosition();
-      final plat = (widget.spot['lat'] is String) ? double.tryParse(widget.spot['lat']) ?? 0.0 : (widget.spot['lat']?.toDouble() ?? 0.0);
-      final plng = (widget.spot['lng'] is String) ? double.tryParse(widget.spot['lng']) ?? 0.0 : (widget.spot['lng']?.toDouble() ?? 0.0);
-      final d = Geolocator.distanceBetween(pos.latitude, pos.longitude, plat, plng) / 1000.0;
-      String txt;
-      if (d >= 1.0) {
-        txt = '${d.toStringAsFixed(1)} km';
-      } else {
-        txt = '${(d*1000).toStringAsFixed(0)} m';
-      }
-      setState(() { _distanceText = txt; });
-    } catch (_) {
-      // ignore
-    }
   }
 
   Future<void> _toggleJoin() async {
@@ -181,9 +156,7 @@ class _SpotDetailViewState extends State<SpotDetailView> {
             }
             final dur = _parseDuration(widget.spot['czas_trwania']);
             final end = start.add(dur);
-            final startFmt = DateFormat('dd.MM.yyyy HH:mm', 'pl').format(start.toLocal());
-            final endFmt = DateFormat('dd.MM.yyyy HH:mm', 'pl').format(end.toLocal());
-            return _infoRow(Icons.schedule, 'Start: $startFmt | Koniec: $endFmt');
+            return _infoRow(Icons.schedule, 'Start: ${start.toLocal()} | Koniec: ${end.toLocal()}');
           }),
           Builder(builder: (ctx) {
             String _distance = '-';
@@ -194,12 +167,12 @@ class _SpotDetailViewState extends State<SpotDetailView> {
                 // try to get current position
                 // Note: Geolocator call in build is synchronous not allowed; display '-' if not available
                 // The calling view usually passes distance; fallback to showing coordinates if needed
-                _distance = _distanceText ?? ('lat:$plat lng:$plng');
+                _distance = 'lat:$plat lng:$plng';
               }
             } catch (_) {}
             return _infoRow(Icons.location_pin, _distance);
           }),
-          _infoRow(Icons.people, "${widget.spot['uczestnicy'] ?? widget.spot['participants_count'] ?? widget.spot['members'] ?? widget.spot['uczestnicy_count'] ?? 0} uczestników"),
+          _infoRow(Icons.category, "Typ: ${spot['typ'] ?? '-'}"),
           _infoRow(Icons.visibility, "Widoczność: ${spot['widocznosc'] ?? '-'}"),
           _infoRow(Icons.person, "Autor: $authorNickname"),
           const SizedBox(height: 16),

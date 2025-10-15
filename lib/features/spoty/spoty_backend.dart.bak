@@ -46,8 +46,6 @@ class SpotyBackend {
           s['kategoria'] = ['partner', 'admin', 'moderator'].contains(autorRola)
               ? 'oficjalna'
               : 'spolecznosciowa';
-            // participants count (from earlier computed map)
-          s['participants_count'] = _participantsCounts[s['id']?.toString()] ?? 0;
           result.add(s);
         }
       }

@@ -22,7 +22,21 @@ class _VehicleLogViewState extends State<VehicleLogView> with TickerProviderStat
   };
 
   List<Map<String, dynamic>> serviceEntries = [];
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
   List<Map<String, dynamic>> fuelEntries = [];
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
   Map<String, dynamic> fuelStats = {};
   DateTime _selectedMonth = DateTime.now();
 
@@ -37,6 +51,13 @@ class _VehicleLogViewState extends State<VehicleLogView> with TickerProviderStat
     try {
       final log = await GarageBackend.fetchVehicleLog(widget.vehicleId);
       final repairs = await GarageBackend.fetchServiceEntries(widget.vehicleId);
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       final fuels = await GarageBackend.fetchFuelEntries(widget.vehicleId);
       final stats = await GarageBackend.getMonthlyFuelStats(
         widget.vehicleId,
@@ -47,7 +68,21 @@ class _VehicleLogViewState extends State<VehicleLogView> with TickerProviderStat
         setState(() {
           logData = log ?? {};
           serviceEntries = repairs;
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
           fuelEntries = fuels;
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
           fuelStats = stats;
         });
       }
@@ -63,7 +98,7 @@ class _VehicleLogViewState extends State<VehicleLogView> with TickerProviderStat
       context: context,
       initialDate: DateTime.now(),
       firstDate: DateTime(2000),
-      lastDate: DateTime.now(),
+      lastDate: DateTime(2100, 12, 31),
       locale: const Locale('pl', 'PL'),
     );
     if (picked != null) {
@@ -268,7 +303,7 @@ void _showAddServiceDialog() async {
                 context: context,
                 initialDate: DateTime.now(),
                 firstDate: DateTime(2020),
-                lastDate: DateTime.now(),
+                lastDate: DateTime(2100, 12, 31),
                 locale: const Locale('pl', 'PL'),
               );
               if (picked != null) {
@@ -331,7 +366,7 @@ void _showAddServiceDialog() async {
                     context: context,
                     initialDate: _selectedMonth,
                     firstDate: DateTime(2020),
-                    lastDate: DateTime.now(),
+                    lastDate: DateTime(2100, 12, 31),
                     locale: const Locale('pl', 'PL'),
                   );
                   if (picked != null) {
@@ -348,21 +383,70 @@ void _showAddServiceDialog() async {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
               Text("🔹 Ilość tankowań: ${fuelStats['count'] ?? 0}", style: const TextStyle(color: Colors.white70)),
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
               Text("🔹 Razem litrów: ${fuelStats['total_liters']?.toStringAsFixed(2) ?? '0.00'}", style: const TextStyle(color: Colors.white70)),
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
               Text("🔹 Łącznie wydano: ${fuelStats['total_pln']?.toStringAsFixed(2) ?? '0.00'} PLN", style: const TextStyle(color: Colors.white70)),
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
               Text("🔹 Średnia cena za litr: ${fuelStats['avg_price_per_liter']?.toStringAsFixed(2) ?? '0.00'} PLN", style: const TextStyle(color: Colors.white70)),
             ],
           ),
         ),
         const Divider(color: Colors.white24),
         Expanded(
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
           child: fuelEntries.isEmpty
               ? const Center(child: Text("Brak wpisów tankowań", style: TextStyle(color: Colors.white60)))
               : ListView.builder(
                   padding: const EdgeInsets.all(16),
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
                   itemCount: fuelEntries.length,
                   itemBuilder: (context, index) {
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
                     final item = fuelEntries[index];
                     return Card(
                       color: Colors.white10,
@@ -409,7 +493,7 @@ void _showAddServiceDialog() async {
                   context: context,
                   initialDate: DateTime.now(),
                   firstDate: DateTime(2020),
-                  lastDate: DateTime.now(),
+                  lastDate: DateTime(2100, 12, 31),
                   locale: const Locale('pl', 'PL'),
                 );
                 if (picked != null) {
@@ -479,6 +563,13 @@ Widget build(BuildContext context) {
         tabs: const [
           Tab(text: "Informacje"),
           Tab(text: "Serwis"),
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
           Tab(text: "Paliwo"),
         ],
       ),

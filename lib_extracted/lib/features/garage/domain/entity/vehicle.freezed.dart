@@ -29,8 +29,29 @@ mixin _$Vehicle {
   int get capacityCm3 => throw _privateConstructorUsedError;
   int get productionYear => throw _privateConstructorUsedError;
   String get color => throw _privateConstructorUsedError;
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
   String get fuelType => throw _privateConstructorUsedError;
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
   String get gearbox => throw _privateConstructorUsedError;
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
   String get drive => throw _privateConstructorUsedError;
   String get note => throw _privateConstructorUsedError;
   String get status => throw _privateConstructorUsedError;
@@ -59,8 +80,29 @@ abstract class $VehicleCopyWith<$Res> {
       int capacityCm3,
       int productionYear,
       String color,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       String fuelType,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       String gearbox,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       String drive,
       String note,
       String status});
@@ -90,8 +132,29 @@ class _$VehicleCopyWithImpl<$Res, $Val extends Vehicle>
     Object? capacityCm3 = null,
     Object? productionYear = null,
     Object? color = null,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
     Object? fuelType = null,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
     Object? gearbox = null,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
     Object? drive = null,
     Object? note = null,
     Object? status = null,
@@ -133,16 +196,79 @@ class _$VehicleCopyWithImpl<$Res, $Val extends Vehicle>
           ? _value.color
           : color // ignore: cast_nullable_to_non_nullable
               as String,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       fuelType: null == fuelType
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
           ? _value.fuelType
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
           : fuelType // ignore: cast_nullable_to_non_nullable
               as String,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       gearbox: null == gearbox
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
           ? _value.gearbox
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
           : gearbox // ignore: cast_nullable_to_non_nullable
               as String,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       drive: null == drive
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
           ? _value.drive
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
           : drive // ignore: cast_nullable_to_non_nullable
               as String,
       note: null == note
@@ -174,8 +300,29 @@ abstract class _$$VehicleImplCopyWith<$Res> implements $VehicleCopyWith<$Res> {
       int capacityCm3,
       int productionYear,
       String color,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       String fuelType,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       String gearbox,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       String drive,
       String note,
       String status});
@@ -203,8 +350,29 @@ class __$$VehicleImplCopyWithImpl<$Res>
     Object? capacityCm3 = null,
     Object? productionYear = null,
     Object? color = null,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
     Object? fuelType = null,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
     Object? gearbox = null,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
     Object? drive = null,
     Object? note = null,
     Object? status = null,
@@ -246,16 +414,79 @@ class __$$VehicleImplCopyWithImpl<$Res>
           ? _value.color
           : color // ignore: cast_nullable_to_non_nullable
               as String,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       fuelType: null == fuelType
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
           ? _value.fuelType
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
           : fuelType // ignore: cast_nullable_to_non_nullable
               as String,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       gearbox: null == gearbox
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
           ? _value.gearbox
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
           : gearbox // ignore: cast_nullable_to_non_nullable
               as String,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       drive: null == drive
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
           ? _value.drive
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
           : drive // ignore: cast_nullable_to_non_nullable
               as String,
       note: null == note
@@ -283,8 +514,29 @@ class _$VehicleImpl extends _Vehicle {
       required this.capacityCm3,
       required this.productionYear,
       required this.color,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       required this.fuelType,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       required this.gearbox,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       required this.drive,
       required this.note,
       required this.status})
@@ -319,10 +571,31 @@ class _$VehicleImpl extends _Vehicle {
   @override
   final String color;
   @override
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
   final String fuelType;
   @override
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
   final String gearbox;
   @override
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
   final String drive;
   @override
   final String note;
@@ -347,9 +620,37 @@ class _$VehicleImpl extends _Vehicle {
             (identical(other.productionYear, productionYear) ||
                 other.productionYear == productionYear) &&
             (identical(other.color, color) || other.color == color) &&
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
             (identical(other.fuelType, fuelType) ||
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
                 other.fuelType == fuelType) &&
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
             (identical(other.gearbox, gearbox) || other.gearbox == gearbox) &&
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
             (identical(other.drive, drive) || other.drive == drive) &&
             (identical(other.note, note) || other.note == note) &&
             (identical(other.status, status) || other.status == status));
@@ -368,8 +669,29 @@ class _$VehicleImpl extends _Vehicle {
       capacityCm3,
       productionYear,
       color,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       fuelType,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       gearbox,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       drive,
       note,
       status);
@@ -401,8 +723,29 @@ abstract class _Vehicle extends Vehicle {
       required final int capacityCm3,
       required final int productionYear,
       required final String color,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       required final String fuelType,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       required final String gearbox,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       required final String drive,
       required final String note,
       required final String status}) = _$VehicleImpl;
@@ -429,10 +772,31 @@ abstract class _Vehicle extends Vehicle {
   @override
   String get color;
   @override
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
   String get fuelType;
   @override
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
   String get gearbox;
   @override
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
   String get drive;
   @override
   String get note;

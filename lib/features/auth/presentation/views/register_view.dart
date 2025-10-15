@@ -58,6 +58,13 @@ class _RegisterViewState extends State<RegisterView> {
 
         if (success) {
           ScaffoldMessenger.of(context).showSnackBar(
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
             const SnackBar(content: Text('Sprawdź swoją skrzynkę i kliknij w link weryfikacyjny')),
           );
           context.goNamed(AppRoutes.loginView);

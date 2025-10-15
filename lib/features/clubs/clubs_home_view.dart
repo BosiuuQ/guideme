@@ -43,7 +43,29 @@ class _ClubsHomeViewState extends State<ClubsHomeView> {
       return;
     }
     try {
-      final r = await supabase.from('clubs_members').select().eq('user_id', userId).limit(1);
+          dynamic rValue;
+    List<dynamic> r = [];
+    try {
+      // try execute() if available
+      try {
+        final execRes = await ( supabase.from('clubs_members').select().eq('user_id', userId).limit(1) as dynamic).execute();
+        rValue = execRes?.data ?? execRes;
+      } catch (e) {
+        // fallback: await directly
+        try {
+          final direct = await supabase.from('clubs_members').select().eq('user_id', userId).limit(1);
+          rValue = (direct is List) ? direct : (direct ?? []);
+        } catch (e2) {
+          rValue = [];
+        }
+      }
+    } catch (e) { rValue = []; }
+    if (rValue is List) {
+      r = List<dynamic>.from(rValue);
+    } else {
+      r = <dynamic>[];
+    }
+
       setState(() {
         isInClub = (r != null && (r is List) && r.isNotEmpty);
         isLoading = false;

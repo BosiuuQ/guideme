@@ -18,8 +18,29 @@ class _VehicleEditViewState extends State<VehicleEditView> {
   late final TextEditingController _capacity;
   late final TextEditingController _year;
   late final TextEditingController _color;
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
   late final TextEditingController _fuel;
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
   late final TextEditingController _gearbox;
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
   late final TextEditingController _drive;
   late final TextEditingController _note;
 
@@ -36,8 +57,29 @@ class _VehicleEditViewState extends State<VehicleEditView> {
     _capacity = TextEditingController(text: v.capacityCm3.toString());
     _year = TextEditingController(text: v.productionYear.toString());
     _color = TextEditingController(text: v.color);
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
     _fuel = TextEditingController(text: v.fuelType);
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
     _gearbox = TextEditingController(text: v.gearbox);
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
     _drive = TextEditingController(text: v.drive);
     _note = TextEditingController(text: v.note);
     super.initState();
@@ -51,8 +93,29 @@ class _VehicleEditViewState extends State<VehicleEditView> {
     _capacity.dispose();
     _year.dispose();
     _color.dispose();
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
     _fuel.dispose();
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
     _gearbox.dispose();
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
     _drive.dispose();
     _note.dispose();
     super.dispose();
@@ -68,8 +131,29 @@ class _VehicleEditViewState extends State<VehicleEditView> {
       capacityCm3: int.tryParse(_capacity.text) ?? 0,
       productionYear: int.tryParse(_year.text) ?? 2000,
       color: _color.text,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       fuelType: _fuel.text,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       gearbox: _gearbox.text,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       drive: _drive.text,
       note: _note.text,
     );
@@ -84,8 +168,29 @@ class _VehicleEditViewState extends State<VehicleEditView> {
             'capacity_cm3': updated.capacityCm3,
             'production_year': updated.productionYear,
             'color': updated.color,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
             'fuel_type': updated.fuelType,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
             'gearbox': updated.gearbox,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
             'drive': updated.drive,
             'note': updated.note,
           })
@@ -140,8 +245,29 @@ if (mounted) {
             _buildField("Pojemność (cm3)", _capacity),
             _buildField("Rok produkcji", _year),
             _buildField("Kolor", _color),
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
             _buildField("Rodzaj paliwa", _fuel),
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
             _buildField("Skrzynia biegów", _gearbox),
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
             _buildField("Napęd", _drive),
             _buildField("Notatka", _note),
             const SizedBox(height: 20),

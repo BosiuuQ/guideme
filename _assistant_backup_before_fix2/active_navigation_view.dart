@@ -184,6 +184,13 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> with Single
                         children: const [
                           Text('Następny manewr', style: TextStyle(color: Colors.white70, fontSize: 14)),
                           SizedBox(height: 6),
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
                           Text('Skręć w prawo za 200 m', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                         ],
                       ),

@@ -7,10 +7,12 @@ import 'package:uuid/uuid.dart';
 import 'package:guide_me/features/spoty/spoty_backend.dart' as backend;
 import 'package:guide_me/mapbox_shim.dart' as mb;
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:guide_me/core/utils/image_compression_helper.dart';
 
 class SpotAddView extends StatefulWidget {
-  const SpotAddView({super.key});
+  final bool embedded;
+  const SpotAddView({super.key, this.embedded = false});
 
   @override
   State<SpotAddView> createState() => _SpotAddViewState();
@@ -42,6 +44,12 @@ class _SpotAddViewState extends State<SpotAddView> {
 
   // optional: store current device location for centering maps
   mb.LatLng? _currentLatLng;
+
+  // start date/time and duration for the spot
+  DateTime _selectedDateTime = DateTime.now();
+  int _durDays = 0;
+  int _durHours = 2;
+  int _durMinutes = 0;
 
   @override
   void initState() {
@@ -121,7 +129,6 @@ class _SpotAddViewState extends State<SpotAddView> {
       debugPrint('Error getting location: $e');
     }
   }
-
   Future<void> _openFullScreenMap() async {
     final mb.LatLng? chosen = await showModalBottomSheet<mb.LatLng>(
       context: context,
@@ -256,6 +263,7 @@ class _SpotAddViewState extends State<SpotAddView> {
     }
   }
 
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_images.isEmpty) {
@@ -272,27 +280,42 @@ class _SpotAddViewState extends State<SpotAddView> {
       final uploaded = await _uploadImage(_images.first);
       if (uploaded == null) throw Exception("Nie udało się przesłać zdjęcia");
 
-      final success = await backend.SpotyBackend.addSpot(
+      
+      // robust send with retry (older devices may fail occasionally)
+      bool _sendSuccess = false;
+      int _attempt = 0;
+      while(!_sendSuccess && _attempt < 3) {
+        _attempt++;
+        final success = await backend.SpotyBackend.addSpot(
         tytul: _nameController.text.trim(),
         opis: _descController.text.trim(),
         lokalizacja: '${_pickedLocation!.latitude},${_pickedLocation!.longitude}',
         lat: _pickedLocation!.latitude,
         lng: _pickedLocation!.longitude,
         widocznosc: _visibility,
-        data: DateTime.now(),
-        czasTrwania: const Duration(hours: 2),
+        data: _selectedDateTime,
+        czasTrwania: Duration(days: _durDays, hours: _durHours, minutes: _durMinutes),
         typ: _type,
         zasady: '',
         zdjecieUrl: uploaded,
       );
 
-      if (success) {
+        if (success) {
+          _sendSuccess = true;
+          break;
+        } else {
+          debugPrint('Add spot attempt $_attempt failed, retrying...');
+          await Future.delayed(const Duration(seconds:2));
+        }
+      }
+
+      if (_sendSuccess) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Spot dodany')));
           context.pop();
         }
       } else {
-        throw Exception("Błąd podczas tworzenia spotu");
+        throw Exception("Błąd podczas tworzenia spotu po 3 próbach");
       }
     } catch (e) {
       debugPrint("Submit error: $e");
@@ -321,8 +344,8 @@ class _SpotAddViewState extends State<SpotAddView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
+      backgroundColor: Color(0xFF0C0F1C),
+      appBar: widget.embedded ? null : AppBar(
         title: const Text("Dodaj spot", style: TextStyle(color: Colors.white)),
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -358,15 +381,21 @@ class _SpotAddViewState extends State<SpotAddView> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(12),
                         child: mb.MapboxMap(
-                          accessToken: 'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg',
-                          initialCameraPosition: mb.CameraPosition(target: _pickedLocation ?? (_currentLatLng ?? mb.LatLng(52.2297,21.0122)), zoom: 13),
+                          accessToken:
+                          'pk.eyJ1IjoiYm9zaXV1cSIsImEiOiJjbWI2dDU0c3AwMzV4MnFxcjhlOWVraHZwIn0.IbQtOAFV1MKkx7id3RwtIg',
+                          initialCameraPosition: mb.CameraPosition(
+                            target: _pickedLocation ?? (_currentLatLng ?? mb.LatLng(52.2297, 21.0122)),
+                            zoom: 13,
+                          ),
                           styleUri: 'mapbox://styles/bosiuuq/cmgf5xezs00i701sec30chpp0',
                           zoomGesturesEnabled: true,
                           scrollGesturesEnabled: true,
                           rotateGesturesEnabled: true,
                           onMapCreated: (controller) async {
                             _mapController = controller;
-                            try { await _mapController!.initManagers(); } catch (_) {}
+                            try {
+                              await _mapController!.initManagers();
+                            } catch (_) {}
                             if (_currentLatLng == null) {
                               try {
                                 final pos = await Geolocator.getCurrentPosition();
@@ -375,16 +404,30 @@ class _SpotAddViewState extends State<SpotAddView> {
                             }
                             if (_currentLatLng != null) {
                               try {
-                                await _mapController!.addSymbol(mb.SymbolOptions(geometry: _currentLatLng!, iconImage: 'assets/icons/marker.png', iconSize: 0.12));
+                                await _mapController!.addSymbol(
+                                  mb.SymbolOptions(
+                                    geometry: _currentLatLng!,
+                                    iconImage: 'assets/icons/marker.png',
+                                    iconSize: 0.12,
+                                  ),
+                                );
                                 await _mapController!.moveCameraImmediate(_currentLatLng!, 14.0);
                               } catch (_) {}
                             }
                           },
                           onTap: (latlng) async {
-                            setState(() { _pickedLocation = latlng; });
+                            setState(() {
+                              _pickedLocation = latlng;
+                            });
                             if (_mapController != null) {
                               if (_locationSymbol == null) {
-                                _locationSymbol = await _mapController!.addSymbol(mb.SymbolOptions(geometry: latlng, iconImage: 'assets/icons/dest_pin.png', iconSize: 0.18));
+                                _locationSymbol = await _mapController!.addSymbol(
+                                  mb.SymbolOptions(
+                                    geometry: latlng,
+                                    iconImage: 'assets/icons/dest_pin.png',
+                                    iconSize: 0.18,
+                                  ),
+                                );
                               } else {
                                 await _mapController!.updateSymbolImmediate(_locationSymbol!, latlng);
                               }
@@ -400,11 +443,14 @@ class _SpotAddViewState extends State<SpotAddView> {
                         child: SafeArea(
                           child: ElevatedButton(
                             onPressed: _openFullScreenMap,
-                            style: ElevatedButton.styleFrom(backgroundColor: Colors.black54, foregroundColor: Colors.white),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.black54,
+                              foregroundColor: Colors.white,
+                            ),
                             child: const Text('Pełny ekran'),
                           ),
                         ),
-                      )
+                      ),
                     ],
                   ),
                 ),
@@ -482,7 +528,81 @@ class _SpotAddViewState extends State<SpotAddView> {
                 ),
               ),
 
-              const SizedBox(height: 18),
+              
+              const SizedBox(height: 8),
+              const Text("Data i czas rozpoczęcia", style: TextStyle(color: Colors.white70)),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 9.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final DateTime? pickedDate = await showDatePicker(
+                            context: context,
+                            initialDate: _selectedDateTime,
+                            firstDate: DateTime(1900, 1, 1).subtract(const Duration(days: 365)),
+                            lastDate: DateTime(2100, 12, 31).add(const Duration(days: 365)),
+                          );
+                          if (pickedDate != null) {
+                            final TimeOfDay? pickedTime = await showTimePicker(
+                              context: context,
+                              initialTime: TimeOfDay(hour: _selectedDateTime.hour, minute: _selectedDateTime.minute),
+                            );
+                            setState(() {
+                              final t = pickedTime ?? TimeOfDay(hour: _selectedDateTime.hour, minute: _selectedDateTime.minute);
+                              _selectedDateTime = DateTime(pickedDate.year, pickedDate.month, pickedDate.day, t.hour, t.minute);
+                            });
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.grey[850],
+                          foregroundColor: Colors.white,
+                        ),
+                        child: Text(
+                          'Start: ${DateFormat('yyyy-MM-dd HH:mm').format(_selectedDateTime)}',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const Text("Czas trwania", style: TextStyle(color: Colors.white70)),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        value: _durDays,
+                        decoration: InputDecoration(labelText: 'Dni', filled: true, fillColor: Colors.grey[900], labelStyle: const TextStyle(color: Colors.white70), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+                        items: List.generate(31, (i) => DropdownMenuItem(value: i, child: Text('${i}'))),
+                        onChanged: (v) { if (v!=null) setState(() => _durDays = v); },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        value: _durHours,
+                        decoration: InputDecoration(labelText: 'Godziny', filled: true, fillColor: Colors.grey[900], labelStyle: const TextStyle(color: Colors.white70), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+                        items: List.generate(24, (i) => DropdownMenuItem(value: i, child: Text('${i}'))),
+                        onChanged: (v) { if (v!=null) setState(() => _durHours = v); },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButtonFormField<int>(
+                        value: _durMinutes,
+                        decoration: InputDecoration(labelText: 'Minuty', filled: true, fillColor: Colors.grey[900], labelStyle: const TextStyle(color: Colors.white70), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none)),
+                        items: [0,15,30,45].map((m) => DropdownMenuItem(value: m, child: Text('${m}'))).toList(),
+                        onChanged: (v) { if (v!=null) setState(() => _durMinutes = v); },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+const SizedBox(height: 18),
               ElevatedButton(
                 onPressed: isSubmitting ? null : _submit,
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent, foregroundColor: Colors.black),

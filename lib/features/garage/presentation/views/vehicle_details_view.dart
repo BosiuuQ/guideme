@@ -212,10 +212,31 @@ class _VehicleDetailsViewState extends State<VehicleDetailsView>
                     ),
                     _infoTileWidget(title: "Kolor", description: vehicle.color ?? '-'),
                     _divider(),
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
                     _infoTileWidget(title: "Rodzaj paliwa", description: vehicle.fuelType ?? '-'),
                     _divider(),
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
                     _infoTileWidget(title: "Skrzynia biegów", description: vehicle.gearbox ?? '-'),
                     _divider(),
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
                     _infoTileWidget(title: "Napęd", description: vehicle.drive ?? '-'),
                     _divider(),
                     _infoTileWidget(title: "Notka od właściciela", description: vehicle.note ?? '-'),

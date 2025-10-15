@@ -48,10 +48,31 @@ class _UserGarageViewState extends State<UserGarageView> {
                 const SizedBox(height: 8),
                 Text("Kolor: ${vehicle.color}", style: const TextStyle(color: Colors.white70)),
                 const SizedBox(height: 8),
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
                 Text("Paliwo: ${vehicle.fuelType}", style: const TextStyle(color: Colors.white70)),
                 const SizedBox(height: 8),
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
                 Text("Skrzynia: ${vehicle.gearbox}", style: const TextStyle(color: Colors.white70)),
                 const SizedBox(height: 8),
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
                 Text("Napęd: ${vehicle.drive}", style: const TextStyle(color: Colors.white70)),
                 const SizedBox(height: 12),
                 if (vehicle.note.isNotEmpty)

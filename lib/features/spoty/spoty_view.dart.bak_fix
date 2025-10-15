@@ -59,7 +59,7 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
       for (final s in spots) {
         final pos = _extractLatLngFromSpot(s);
         if (pos == null) continue;
-        await _mapController!.addSymbol(mb.SymbolOptions(geometry: pos, iconImage: 'assets/icons/dest_pin.png', iconSize: 0.12));
+        await _mapController!.addSymbol(mb.SymbolOptions(geometry: pos, iconImage: 'assets/icons/dest_pin.png', iconSize: 1.0));
       }
     } catch (e) {
       // ignore errors but print for debug
@@ -71,7 +71,6 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _tabController!.addListener(() => setState(() {}));
     _init();
   }
 
@@ -145,12 +144,12 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
         children: [
           Column(
             children: [
-              if (_tabController?.index != 2) Padding(
+              Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: SizedBox(
                   height: 260,
-                  child:
-                    (_tabController?.index == 2) ? const SizedBox.shrink() : ClipRRect(
+                  child: 
+                    ClipRRect(
                     borderRadius: BorderRadius.circular(16),
                     child: SizedBox(
                       height: MediaQuery.of(context).size.height * 0.5,
@@ -179,7 +178,7 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
                   children: [
                     _buildSpotList(officialSpots),
                     _buildSpotList(communitySpots),
-                    SpotAddView(embedded: true),
+                    const SpotAddView(),
                   ],
                 ),
               ),
@@ -293,7 +292,7 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
                       final double plat = (spot['lat'] is String) ? double.tryParse(spot['lat']) ?? 0.0 : (spot['lat']?.toDouble() ?? 0.0);
                       final double plng = (spot['lng'] is String) ? double.tryParse(spot['lng']) ?? 0.0 : (spot['lng']?.toDouble() ?? 0.0);
                       final d = Geolocator.distanceBetween(_currentLatLng!.latitude, _currentLatLng!.longitude, plat, plng) / 1000.0;
-                      _distanceText = d >= 1.0 ? '${d.toStringAsFixed(1)} km' : '${(d*1000).toStringAsFixed(0)} m';
+                      _distanceText = d >= 1.0 ? '\${d.toStringAsFixed(1)} km' : '\${(d*1000).toStringAsFixed(0)} m';
                     }
                   } catch (_) {}
                   return Text('📍 $_distanceText', style: const TextStyle(color: Colors.grey));
@@ -301,18 +300,17 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
                 const SizedBox(height: 2),
                 Text(spot["opis"] ?? "", style: const TextStyle(color: Colors.grey)),
                 const SizedBox(height: 2),
-                Text("👥 ${spot['participants_count'] ?? spot['uczestnicy'] ?? spot['participants_count'] ?? 0} uczestników", style: const TextStyle(color: Colors.grey)),
+                Text("Typ: ${spot["typ"] ?? ''}", style: const TextStyle(color: Colors.grey)),
               ],
             ),
             trailing: ElevatedButton(
-  onPressed: () async {
-    await Navigator.push(
+  onPressed: () {
+    Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => SpotDetailView(spot: spot),
       ),
     );
-    await _loadSpoty();
   },
   style: ElevatedButton.styleFrom(
     backgroundColor: Colors.cyanAccent,

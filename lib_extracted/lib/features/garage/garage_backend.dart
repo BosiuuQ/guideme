@@ -1,3 +1,10 @@
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
 // 📁 garage_backend.dart – z obsługą zakładki paliwo i statystyk miesięcznych
 
 import 'dart:convert';
@@ -45,8 +52,29 @@ class GarageBackend {
       'capacity_cm3': vehicle.capacityCm3,
       'production_year': vehicle.productionYear,
       'color': vehicle.color,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       'fuel_type': vehicle.fuelType,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       'gearbox': vehicle.gearbox,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       'drive': vehicle.drive,
       'note': vehicle.note,
       'image_urls': imageUrls,
@@ -71,6 +99,13 @@ class GarageBackend {
 
   static Future<void> deleteVehicleWithLog(String vehicleId) async {
     await _client.from('vehicle_service_entries').delete().eq('vehicle_id', vehicleId);
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
     await _client.from('vehicle_fuel_entries').delete().eq('vehicle_id', vehicleId);
     await _client.from('vehicle_logs').delete().eq('vehicle_id', vehicleId);
     await _client.from('garaz').delete().eq('id', vehicleId);
@@ -211,6 +246,13 @@ class GarageBackend {
 
   static Future<List<Map<String, dynamic>>> fetchFuelEntries(String vehicleId) async {
     final data = await _client
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
         .from('vehicle_fuel_entries')
         .select('*')
         .eq('vehicle_id', vehicleId)
@@ -224,6 +266,13 @@ class GarageBackend {
     final lastDay = DateTime(year, month + 1, 0).toIso8601String();
 
     final data = await _client
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
         .from('vehicle_fuel_entries')
         .select('liters, pln')
         .eq('vehicle_id', vehicleId)
@@ -287,8 +336,29 @@ class GarageBackend {
       'capacity_cm3': vehicle.capacityCm3,
       'production_year': vehicle.productionYear,
       'color': vehicle.color,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       'fuel_type': vehicle.fuelType,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       'gearbox': vehicle.gearbox,
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
       'drive': vehicle.drive,
       'note': vehicle.note,
       'status': vehicle.status,
@@ -316,6 +386,13 @@ class GarageBackend {
     required double? pln,
   }) async {
     if (date == null || liters == null || pln == null) return;
+
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
 
     await _client.from('vehicle_fuel_entries').insert({
       'vehicle_id': vehicleId,

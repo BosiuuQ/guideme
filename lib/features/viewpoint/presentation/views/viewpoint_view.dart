@@ -120,7 +120,6 @@ class _ViewpointViewState extends State<ViewpointView> {
       return {'distance': null, 'avgRating': null};
     }
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -142,16 +141,15 @@ class _ViewpointViewState extends State<ViewpointView> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => context.go(AppRoutes.viewpointAddView),
-        backgroundColor: AppColors.blue,
-        child: const Icon(Icons.add),
-      ),
+      // FAB usunięty (używamy "Dodaj punkt" jako zakładki w filter bar)
+      floatingActionButton: null,
       body: Column(
         children: [
           _buildFilterBar(),
           Expanded(
-            child: _futureViewpoints == null
+            child: _selectedFilter == 'dodaj'
+                ? const ViewpointAddView()
+                : (_futureViewpoints == null
                 ? const Center(child: CircularProgressIndicator(color: Colors.white))
                 : FutureBuilder<List<Viewpoint>>(
               future: _futureViewpoints,
@@ -160,7 +158,7 @@ class _ViewpointViewState extends State<ViewpointView> {
                   return const Center(child: CircularProgressIndicator(color: Colors.white));
                 }
                 if (snapshot.hasError) {
-                  return Center(child: Text("Błąd: ${snapshot.error}", style: TextStyle(color: Colors.white)));
+                  return Center(child: Text("Błąd: ${snapshot.error}", style: const TextStyle(color: Colors.white)));
                 }
                 final viewpoints = snapshot.data ?? [];
                 if (viewpoints.isEmpty) {
@@ -194,7 +192,7 @@ class _ViewpointViewState extends State<ViewpointView> {
                   separatorBuilder: (_, __) => const SizedBox(height: 16.0),
                 );
               },
-            ),
+            )),
           ),
         ],
       ),
@@ -218,6 +216,8 @@ class _ViewpointViewState extends State<ViewpointView> {
             _filterOption("Moje punkty", 'moje'),
             const SizedBox(width: 8),
             _filterOption("Najnowsze", 'najnowsze'),
+            const SizedBox(width: 8),
+            _filterOption("Dodaj punkt", 'dodaj'),
           ],
         ),
       ),

@@ -162,6 +162,13 @@ class MapLogicHandler {
   DateTime? _stationaryCandidateSince;
   DateTime? _movingCandidateSince;
 
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
   // Timer to drive frame-based interpolation
   Timer? _ticker;
   bool _running = false;

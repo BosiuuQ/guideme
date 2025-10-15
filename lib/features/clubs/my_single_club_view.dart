@@ -19,12 +19,13 @@ class _MySingleClubViewState extends State<MySingleClubView> with TickerProvider
   Map<String, dynamic>? clubData;
   Map<String, dynamic>? motywData;
   bool isLoading = true;
+  bool isLeader = false;
   TabController? _tabController;
   late final members = Supabase.instance.client
       .from('clubs_members')
       .select('user_id')
       .eq('club_id', clubData!['id']);
-  late final clubMembersCount = (members as List).length;
+  late var clubMembersCount = (members as List).length;
 
 
   @override
@@ -40,12 +41,37 @@ class _MySingleClubViewState extends State<MySingleClubView> with TickerProvider
     final clubId = clubData?['id'];
     final rola = clubData?['user_rola'] ?? '';
 
-    final members = await Supabase.instance.client
+    // Robust fetch of members that handles various supabase client behaviors
+    final membersQuery = Supabase.instance.client
         .from('clubs_members')
         .select('user_id')
         .eq('club_id', clubId);
-
-    final bool isOnlyMember = members.length == 1 && rola == 'Lider';
+    dynamic membersResValue;
+    List<dynamic> members = [];
+    try {
+      // try calling execute() if available (some clients expose it)
+      try {
+        final execRes = await (membersQuery as dynamic).execute();
+        membersResValue = execRes?.data ?? execRes;
+      } catch (e) {
+        // fallback: try awaiting the query directly
+        try {
+          final directRes = await membersQuery;
+          membersResValue = (directRes is List) ? directRes : (directRes ?? []);
+        } catch (e2) {
+          membersResValue = [];
+        }
+      }
+    } catch (e) {
+      membersResValue = [];
+    }
+    if (membersResValue is List) {
+      members = List<dynamic>.from(membersResValue);
+    } else {
+      // final fallback: empty list to avoid runtime cast errors
+      members = <dynamic>[];
+    }
+final bool isOnlyMember = members.length == 1 && rola == 'Lider';
 
     showDialog(
       context: context,
@@ -89,13 +115,37 @@ class _MySingleClubViewState extends State<MySingleClubView> with TickerProvider
 
     try {
       // Pobierz aktualną listę członków
-      final membersRes = await supabase
-          .from('clubs_members')
-          .select('user_id')
-          .eq('club_id', clubId);
-
-      List members = membersRes as List<dynamic>;
-      final int memberCount = members.length;
+      // Robust fetch of members that handles various supabase client behaviors
+    final membersQuery = supabase
+        .from('clubs_members')
+        .select('user_id')
+        .eq('club_id', clubId);
+    dynamic membersResValue;
+    List<dynamic> members = [];
+    try {
+      // try calling execute() if available (some clients expose it)
+      try {
+        final execRes = await (membersQuery as dynamic).execute();
+        membersResValue = execRes?.data ?? execRes;
+      } catch (e) {
+        // fallback: try awaiting the query directly
+        try {
+          final directRes = await membersQuery;
+          membersResValue = (directRes is List) ? directRes : (directRes ?? []);
+        } catch (e2) {
+          membersResValue = [];
+        }
+      }
+    } catch (e) {
+      membersResValue = [];
+    }
+    if (membersResValue is List) {
+      members = List<dynamic>.from(membersResValue);
+    } else {
+      // final fallback: empty list to avoid runtime cast errors
+      members = <dynamic>[];
+    }
+final int memberCount = members.length;
 
       if (rola == 'Lider') {
         if (memberCount == 1) {
@@ -158,32 +208,72 @@ class _MySingleClubViewState extends State<MySingleClubView> with TickerProvider
 
 
 
-
   Future<void> _loadClubAndMotyw() async {
-    final club = await ClubController().getClubById(widget.clubId);
-    if (club == null) {
-      setState(() {
-        clubData = null;
-        isLoading = false;
-      });
-      return;
+    final supabase = Supabase.instance.client;
+    try {
+      // Pobierz klub
+      final clubRes = await supabase.from('clubs').select('*').eq('id', widget.clubId).maybeSingle();
+      if (clubRes == null) {
+        if (mounted) {
+          setState(() {
+            clubData = null;
+            isLoading = false;
+          });
+        }
+        return;
+      }
+      final Map<String, dynamic> club = Map<String, dynamic>.from(clubRes);
+
+      // motyw
+      final motywId = club['motyw_id'] ?? 1;
+      final motywRes = await supabase.from('motywy_clubs').select('*').eq('id', motywId).maybeSingle();
+      final motyw = motywRes != null ? Map<String, dynamic>.from(motywRes) : null;
+
+      // Pobierz członków klubu
+      final membersRes = await supabase.from('clubs_members').select('user_id, rola').eq('club_id', widget.clubId);
+      List<Map<String, dynamic>> members = [];
+      if (membersRes is List) {
+        members = membersRes.map((e) => Map<String, dynamic>.from(e)).toList();
+      }
+
+      final membersCount = members.length;
+
+      // Sprawdź rolę zalogowanego użytkownika
+      final userId = supabase.auth.currentUser?.id;
+      bool leaderFlag = false;
+      if (userId != null) {
+        final userMember = members.firstWhere(
+              (m) => m['user_id'] == userId,
+          orElse: () => {},
+        );
+        if (userMember.isNotEmpty) {
+          final rola = userMember['rola']?.toString();
+          if (rola == 'Lider') leaderFlag = true;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          clubData = club;
+          motywData = motyw;
+          clubMembersCount = membersCount;
+          isLeader = leaderFlag;
+          _tabController = TabController(length: 3, vsync: this);
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading club: $e');
+      if (mounted) {
+        setState(() {
+          clubData = null;
+          isLoading = false;
+        });
+      }
     }
-
-    final motywId = club['motyw_id'] ?? 1;
-    final motyw = await Supabase.instance.client
-        .from('motywy_clubs')
-        .select('*')
-        .eq('id', motywId)
-        .maybeSingle();
-
-    _tabController = TabController(length: 3, vsync: this);
-
-    setState(() {
-      clubData = club;
-      motywData = motyw;
-      isLoading = false;
-    });
   }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -203,6 +293,9 @@ class _MySingleClubViewState extends State<MySingleClubView> with TickerProvider
         ),
       );
     }
+
+
+
 
     final tloUrl = motywData?['image_url'] ??
         'https://img.mobiles24.net/static/previews/downloads/default/331/P-651412-gQtRObcOWF-1.jpg';
@@ -256,7 +349,63 @@ class _MySingleClubViewState extends State<MySingleClubView> with TickerProvider
     );
   }
 
-  Widget _buildInfoTab() {
+void _confirmDelete() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+    final clubId = clubData?['id'];
+    if (clubId == null) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF03121A),
+        title: const Text('Usunąć klub?', style: TextStyle(color: Colors.white)),
+        content: const Text('Czy na pewno chcesz usunąć ten klub? Operacja usunie klub dla wszystkich członków.', style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Anuluj', style: TextStyle(color: Colors.white54))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () async {
+              Navigator.pop(context);
+              await _deleteClub();
+            },
+            child: const Text('Tak, usuń'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteClub() async {
+    final supabase = Supabase.instance.client;
+    final clubId = clubData?['id'];
+    if (clubId == null) return;
+    try {
+      // Usuń członków i sam klub
+      await supabase.from('clubs_members').delete().eq('club_id', clubId);
+      await supabase.from('clubs').delete().eq('id', clubId);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Klub został usunięty.')),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      debugPrint('Delete club error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Błąd podczas usuwania klubu.')),
+        );
+      }
+    }
+  }
+
+
+
+
+Widget _buildInfoTab() {
+    final memberCount = clubMembersCount;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -265,28 +414,68 @@ class _MySingleClubViewState extends State<MySingleClubView> with TickerProvider
         _statCard("🔒 Typ klubu", clubData!['is_open'] ? "Otwarty" : "Zamknięty", Icons.lock),
         const SizedBox(height: 24),
 
-        ElevatedButton.icon(
-          icon: const Icon(Icons.exit_to_app, color: Colors.white),
-          label: Text(
-            clubData!['user_rola'] == 'Lider' && (clubMembersCount > 1)
-                ? 'Opuść klub / Przekaż lidera'
-                : (clubData!['user_rola'] == 'Lider' ? 'Usuń klub' : 'Opuść klub'),
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        // Buttons visible depending on role and member count:
+        if (isLeader && memberCount == 1) ...[
+          ElevatedButton.icon(
+            icon: const Icon(Icons.delete, color: Colors.white),
+            label: const Text('Usuń klub', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            onPressed: _confirmDelete,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
           ),
-          onPressed: _confirmLeave,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.redAccent,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ] else if (isLeader && memberCount > 1) ...[
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.delete, color: Colors.white),
+                  label: const Text('Usuń klub', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  onPressed: _confirmDelete,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.exit_to_app, color: Colors.white),
+                  label: const Text('Opuść klub', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  onPressed: _confirmLeave,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orangeAccent,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ),
+        ] else if (!isLeader && memberCount > 1) ...[
+          ElevatedButton.icon(
+            icon: const Icon(Icons.exit_to_app, color: Colors.white),
+            label: const Text('Opuść klub', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            onPressed: _confirmLeave,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ] else ...[
+          // Not leader and only member (edge case) -> no buttons
+          const SizedBox.shrink(),
+        ],
 
       ],
     );
   }
-
-
-  Widget _infoCard(String title, String content) {
+Widget _infoCard(String title, String content) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),

@@ -63,7 +63,7 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
       }
     } catch (e) {
       // ignore errors but print for debug
-      debugPrint('Error adding symbols: \$e');
+      debugPrint('Error adding symbols: $e');
     }
   }
 
@@ -125,13 +125,19 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
 
     return Scaffold(
       backgroundColor: const Color(0xFF0C0F1C),
+      return Scaffold(
+      backgroundColor: const Color(0xFF0C0F1C),
       appBar: AppBar(
         backgroundColor: Colors.black.withOpacity(0.5),
+        elevation: 0,
         title: const Text("Spoty", style: TextStyle(color: Colors.white, fontSize: 24)),
         bottom: TabBar(
           controller: _tabController,
-          indicatorColor: Colors.cyanAccent,
-          labelColor: Colors.cyanAccent,
+          indicator: BoxDecoration(
+            color: Colors.cyanAccent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          labelColor: Colors.black,
           unselectedLabelColor: Colors.white70,
           tabs: const [
             Tab(text: "Oficjalne Spoty"),
@@ -139,7 +145,7 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
             Tab(text: "Dodaj spot"),
           ],
         ),
-      ),
+      ),,
 
       body: Stack(
         children: [
@@ -164,7 +170,7 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
                             if (_currentLatLng != null) {
                               await _mapController!.addSymbol(mb.SymbolOptions(geometry: _currentLatLng!, iconImage: 'assets/icons/marker.png', iconSize: 0.12));
                             }
-                          } catch (e) { debugPrint('Error adding user symbol: \$e'); }
+                          } catch (e) { debugPrint('Error adding user symbol: $e'); }
                         },
                         myLocationEnabled: true,
                         trackCameraPosition: true,
@@ -301,7 +307,7 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
                 const SizedBox(height: 2),
                 Text(spot["opis"] ?? "", style: const TextStyle(color: Colors.grey)),
                 const SizedBox(height: 2),
-                Text("👥 ${spot['participants_count'] ?? spot['uczestnicy'] ?? spot['participants_count'] ?? 0} uczestników", style: const TextStyle(color: Colors.grey)),
+                Text('👥 ${spot[\'participants_count\'] ?? spot[\'uczestnicy\'] ?? 0} uczestników', style: const TextStyle(color: Colors.grey)),
               ],
             ),
             trailing: ElevatedButton(

@@ -14,7 +14,8 @@ import 'package:guide_me/features/viewpoint/viewpoint_backend.dart';
 import 'image_cropper_helper.dart';
 
 class ViewpointAddView extends StatefulWidget {
-  const ViewpointAddView({super.key});
+  final bool embedded;
+  const ViewpointAddView({super.key, this.embedded = false});
 
   @override
   State<ViewpointAddView> createState() => _ViewpointAddViewState();
@@ -70,13 +71,18 @@ class _ViewpointAddViewState extends State<ViewpointAddView> {
 
     final original = File(picked.path);
 
-    // od razu proponujemy przycięcie
+    // od razu proponujemy przycięcie (pomijamy crop na Androidzie z powodu problemów z pluginem)
     File? cropped;
     try {
-      cropped = await ImageCropperHelper.crop(file: original);
+      if (Platform.isAndroid) {
+        // skip cropping on Android to avoid image_cropper plugin crashes (reply already submitted)
+        cropped = null;
+      } else {
+        cropped = await ImageCropperHelper.crop(file: original);
+      }
     } catch (e) {
       debugPrint('Image crop failed: \$e');
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd przy przycinaniu obrazu: \$e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd przy przycinaniu obrazu: \$e')));
       cropped = null;
     }
 
@@ -276,7 +282,7 @@ class _ViewpointAddViewState extends State<ViewpointAddView> {
       onWillPop: _handleBack,
       child: Scaffold(
         backgroundColor: bgStart,
-        appBar: AppBar(
+        appBar: widget.embedded ? null : AppBar(
           elevation: 0,
           backgroundColor: Colors.transparent,
           leading: IconButton(

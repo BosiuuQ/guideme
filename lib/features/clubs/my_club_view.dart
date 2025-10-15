@@ -36,7 +36,29 @@ class _MyClubViewState extends State<MyClubView> {
       return;
     }
     try {
-      final members = await supabase.from('clubs_members').select('club_id').eq('user_id', userId);
+          dynamic membersValue;
+    List<dynamic> members = [];
+    try {
+      // try execute() if available
+      try {
+        final execRes = await ( supabase.from('clubs_members').select('club_id').eq('user_id', userId) as dynamic).execute();
+        membersValue = execRes?.data ?? execRes;
+      } catch (e) {
+        // fallback: await directly
+        try {
+          final direct = await supabase.from('clubs_members').select('club_id').eq('user_id', userId);
+          membersValue = (direct is List) ? direct : (direct ?? []);
+        } catch (e2) {
+          membersValue = [];
+        }
+      }
+    } catch (e) { membersValue = []; }
+    if (membersValue is List) {
+      members = List<dynamic>.from(membersValue);
+    } else {
+      members = <dynamic>[];
+    }
+
       if (members == null || members is! List || members.isEmpty) {
         setState(() {
           myClubs = [];

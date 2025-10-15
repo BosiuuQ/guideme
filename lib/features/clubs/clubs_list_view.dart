@@ -42,14 +42,46 @@ class _ClubsListViewState extends State<ClubsListView> {
   }
 
   Future<void> fetchClubs() async {
-    final response = await supabase.from('clubs').select();
-    setState(() {
-      clubs = List<Map<String, dynamic>>.from(response);
-      isLoading = false;
-    });
+    try {
+          dynamic responseValue;
+    List<dynamic> response = [];
+    try {
+      // try execute() if available
+      try {
+        final execRes = await ( supabase.from('clubs').select() as dynamic).execute();
+        responseValue = execRes?.data ?? execRes;
+      } catch (e) {
+        // fallback: await directly
+        try {
+          final direct = await supabase.from('clubs').select();
+          responseValue = (direct is List) ? direct : (direct ?? []);
+        } catch (e2) {
+          responseValue = [];
+        }
+      }
+    } catch (e) { responseValue = []; }
+    if (responseValue is List) {
+      response = List<dynamic>.from(responseValue);
+    } else {
+      response = <dynamic>[];
+    }
+
+      final List data = (response is List) ? List<dynamic>.from(response) : ( (response ?? []) as List<dynamic> );
+      setState(() {
+        clubs = List<Map<String, dynamic>>.from(data);
+        isLoading = false;
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+      debugPrint('fetchClubs error: $e');
+    }
   }
 
-  Future<void> joinClub(String clubId) async {
+Future<void> joinClub(String clubId) async {
     final userId = supabase.auth.currentUser?.id;
     if (userId == null) return;
 

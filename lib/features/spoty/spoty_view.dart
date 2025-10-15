@@ -6,6 +6,8 @@ import 'package:guide_me/features/spoty/spot_add_view.dart';
 import 'package:guide_me/features/spoty/spoty_backend.dart';
 import 'package:guide_me/features/spoty/spot_detail_view.dart';
 
+import '../../core/constants/app_colors.dart';
+
 
 class SpotyView extends StatefulWidget {
   const SpotyView({super.key});
@@ -59,18 +61,19 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
       for (final s in spots) {
         final pos = _extractLatLngFromSpot(s);
         if (pos == null) continue;
-        await _mapController!.addSymbol(mb.SymbolOptions(geometry: pos, iconImage: 'assets/icons/dest_pin.png', iconSize: 1.0));
+        await _mapController!.addSymbol(mb.SymbolOptions(geometry: pos, iconImage: 'assets/icons/dest_pin.png', iconSize: 0.12));
       }
     } catch (e) {
       // ignore errors but print for debug
-      debugPrint('Error adding symbols: \$e');
+      debugPrint('Error adding symbols: $e');
     }
   }
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController!.addListener(() => setState(() {}));
     _init();
   }
 
@@ -123,39 +126,41 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0C0F1C),
+      backgroundColor: Color(0xFF0C0F1C),
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: const Text("Spoty", style: TextStyle(color: Colors.white, fontSize: 24)),
+        backgroundColor: Color(0xFF090A13),
+        elevation: 0,
+        title: const Text(
+          "Spoty",
+          style: TextStyle(color: Colors.white, fontSize: 24),
+        ),
         bottom: TabBar(
           controller: _tabController,
-          indicatorColor: Colors.cyanAccent,
-          labelColor: Colors.cyanAccent,
+          indicatorSize: TabBarIndicatorSize.tab, // 👈 to powoduje, że underline ma szerokość całego taba
+          indicator: const UnderlineTabIndicator(
+            borderSide: BorderSide(width: 3, color: Colors.cyanAccent),
+          ),
+          labelStyle: const TextStyle(fontWeight: FontWeight.w600),
+          labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
           tabs: const [
-            Tab(text: "Oficjalne Spoty"),
-            Tab(text: "Społecznościowe Spoty"),
+            Tab(text: "Oficjalne"),
+            Tab(text: "Społecznościowe"),
+            Tab(text: "Dodaj spot"),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          await Navigator.push(context, MaterialPageRoute(builder: (_) => const SpotAddView()));
-          _loadSpoty(); // odśwież po powrocie
-        },
-        backgroundColor: Colors.cyanAccent,
-        child: const Icon(Icons.add, color: Colors.black),
-      ),
+
       body: Stack(
         children: [
           Column(
             children: [
-              Padding(
+              if (_tabController?.index != 2) Padding(
                 padding: const EdgeInsets.all(12.0),
                 child: SizedBox(
                   height: 260,
-                  child: 
-                    ClipRRect(
+                  child:
+                    (_tabController?.index == 2) ? const SizedBox.shrink() : ClipRRect(
                     borderRadius: BorderRadius.circular(16),
                     child: SizedBox(
                       height: MediaQuery.of(context).size.height * 0.5,
@@ -169,7 +174,7 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
                             if (_currentLatLng != null) {
                               await _mapController!.addSymbol(mb.SymbolOptions(geometry: _currentLatLng!, iconImage: 'assets/icons/marker.png', iconSize: 0.12));
                             }
-                          } catch (e) { debugPrint('Error adding user symbol: \$e'); }
+                          } catch (e) { debugPrint('Error adding user symbol: $e'); }
                         },
                         myLocationEnabled: true,
                         trackCameraPosition: true,
@@ -184,6 +189,7 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
                   children: [
                     _buildSpotList(officialSpots),
                     _buildSpotList(communitySpots),
+                    SpotAddView(embedded: true),
                   ],
                 ),
               ),
@@ -234,7 +240,7 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
                         onPressed: () {
                           // TODO: szczegóły
                         },
-                        child: const Text("Szczegóły", style: TextStyle(color: Colors.cyanAccent)),
+                        child: const Text("Szczegóły", style: TextStyle(color: AppColors.blue)),
                       ),
                     ],
                   ),
@@ -290,26 +296,35 @@ class _SpotyViewState extends State<SpotyView> with SingleTickerProviderStateMix
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const SizedBox(height: 4),
-                Text("📍 ${spot["lokalizacja"] ?? ''}", style: const TextStyle(color: Colors.grey)),
+                Builder(builder: (ctx) {
+                  String _distanceText = '-';
+                  try {
+                    if (_currentLatLng != null && spot['lat'] != null && spot['lng'] != null) {
+                      final double plat = (spot['lat'] is String) ? double.tryParse(spot['lat']) ?? 0.0 : (spot['lat']?.toDouble() ?? 0.0);
+                      final double plng = (spot['lng'] is String) ? double.tryParse(spot['lng']) ?? 0.0 : (spot['lng']?.toDouble() ?? 0.0);
+                      final d = Geolocator.distanceBetween(_currentLatLng!.latitude, _currentLatLng!.longitude, plat, plng) / 1000.0;
+                      _distanceText = d >= 1.0 ? '${d.toStringAsFixed(1)} km' : '${(d*1000).toStringAsFixed(0)} m';
+                    }
+                  } catch (_) {}
+                  return Text('📍 $_distanceText', style: const TextStyle(color: Colors.grey));
+                }),
                 const SizedBox(height: 2),
                 Text(spot["opis"] ?? "", style: const TextStyle(color: Colors.grey)),
                 const SizedBox(height: 2),
-                Text("Typ: ${spot["typ"] ?? ''}", style: const TextStyle(color: Colors.grey)),
+                Text("👥 ${spot['participants_count'] ?? spot['uczestnicy'] ?? 0} uczestników", style: const TextStyle(color: Colors.grey)),
               ],
             ),
             trailing: ElevatedButton(
-  onPressed: () {
-    Navigator.push(
+  onPressed: () async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => SpotDetailView(spot: spot),
       ),
     );
+    await _loadSpoty();
   },
-  style: ElevatedButton.styleFrom(
-    backgroundColor: Colors.cyanAccent,
-    foregroundColor: Colors.black,
-  ),
+
   child: const Text("Szczegóły"),
 ),
           ),

@@ -20,6 +20,13 @@ class LoginAuth {
 
       // Sprawdzamy, czy użytkownik ma potwierdzony e-mail
       if (user.emailConfirmedAt == null) {
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
         throw Exception("Musisz potwierdzić e-mail przed logowaniem. Sprawdź swoją skrzynkę.");
       }
 

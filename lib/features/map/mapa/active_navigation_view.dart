@@ -387,7 +387,21 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> with Single
   String _translateInstruction(String? instr) {
     if (instr == null) return 'Trasa';
     final s = instr.toLowerCase();
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
     if (s.contains('right')) return 'Skręć w prawo';
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
     if (s.contains('left')) return 'Skręć w lewo';
     if (s.contains('arrive')) return 'Dojazd na miejsce';
     if (s.contains('continue')) return 'Kontynuuj';

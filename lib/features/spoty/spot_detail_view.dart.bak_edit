@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 
@@ -79,9 +78,9 @@ class _SpotDetailViewState extends State<SpotDetailView> {
       final d = Geolocator.distanceBetween(pos.latitude, pos.longitude, plat, plng) / 1000.0;
       String txt;
       if (d >= 1.0) {
-        txt = '${d.toStringAsFixed(1)} km';
+        txt = '\${d.toStringAsFixed(1)} km';
       } else {
-        txt = '${(d*1000).toStringAsFixed(0)} m';
+        txt = '\${(d*1000).toStringAsFixed(0)} m';
       }
       setState(() { _distanceText = txt; });
     } catch (_) {
@@ -194,7 +193,7 @@ class _SpotDetailViewState extends State<SpotDetailView> {
                 // try to get current position
                 // Note: Geolocator call in build is synchronous not allowed; display '-' if not available
                 // The calling view usually passes distance; fallback to showing coordinates if needed
-                _distance = _distanceText ?? ('lat:$plat lng:$plng');
+                _distance = _distanceText ?? ('lat:\$plat lng:\$plng');
               }
             } catch (_) {}
             return _infoRow(Icons.location_pin, _distance);

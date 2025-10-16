@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:guide_me/core/config/routing/app_routes.dart';
+import 'package:guide_me/core/constants/app_colors.dart';
 import 'package:guide_me/features/posts/instagram_backend.dart';
 
 class InstagramPostyView extends StatefulWidget {
@@ -150,6 +151,7 @@ class _InstagramPostyViewState extends State<InstagramPostyView>
                 _search = v.trim();
                 _fetchFirstPage();
               },
+              onChanged: _onSearchChanged,
               decoration: InputDecoration(
                 hintText: "Wyszukaj posty...",
                 prefixIcon: const Icon(Icons.search),
@@ -157,55 +159,62 @@ class _InstagramPostyViewState extends State<InstagramPostyView>
                   borderRadius: BorderRadius.circular(8.0),
                 ),
               ),
-              onChanged: _onSearchChanged,
             ),
           ),
         ),
       ),
+
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: AppColors.blue,
+        onPressed: () => context.pushNamed(AppRoutes.postAddView),
+        child: const Icon(Icons.add),
+      ),
+
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _posts.isEmpty
-              ? const Center(child: Text("Brak postów spełniających kryteria"))
-              : RefreshIndicator(
-                  onRefresh: _onRefresh,
-                  child: GridView.builder(
-                    controller: _scroll,
-                    itemCount: _posts.length + (_isFetchingMore ? 1 : 0),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      mainAxisSpacing: 4,
-                      crossAxisSpacing: 4,
-                      childAspectRatio: 1,
-                    ),
-                    cacheExtent: 800,
-                    itemBuilder: (context, index) {
-                      if (index >= _posts.length) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      final post = _posts[index];
-                      final imageUrl = (post['image_url'] as String?) ?? '';
+          ? const Center(child: Text("Brak postów spełniających kryteria"))
+          : RefreshIndicator(
+        onRefresh: _onRefresh,
+        child: GridView.builder(
+          controller: _scroll,
+          itemCount: _posts.length + (_isFetchingMore ? 1 : 0),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            mainAxisSpacing: 4,
+            crossAxisSpacing: 4,
+            childAspectRatio: 1,
+          ),
+          cacheExtent: 800,
+          itemBuilder: (context, index) {
+            if (index >= _posts.length) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final post = _posts[index];
+            final imageUrl = (post['image_url'] as String?) ?? '';
 
-                      return InkWell(
-                        onTap: () => context.pushNamed(
-                          AppRoutes.postDetailsView,
-                          extra: post,
-                        ),
-                        child: CachedNetworkImage(
-                          imageUrl: imageUrl,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 400,
-                          memCacheHeight: 400,
-                          maxWidthDiskCache: 600,
-                          maxHeightDiskCache: 600,
-                          placeholder: (context, url) =>
-                              Container(color: Colors.black12),
-                          errorWidget: (context, error, stackTrace) =>
-                              const Icon(Icons.broken_image),
-                        ),
-                      );
-                    },
+            return InkWell(
+              onTap: () =>
+                  context.pushNamed(
+                    AppRoutes.postDetailsView,
+                    extra: post,
                   ),
-                ),
+              child: CachedNetworkImage(
+                imageUrl: imageUrl,
+                fit: BoxFit.cover,
+                memCacheWidth: 400,
+                memCacheHeight: 400,
+                maxWidthDiskCache: 600,
+                maxHeightDiskCache: 600,
+                placeholder: (context, url) =>
+                    Container(color: Colors.black12),
+                errorWidget: (context, error, stackTrace) =>
+                const Icon(Icons.broken_image),
+              ),
+            );
+          },
+        ),
+      ),
     );
   }
 }

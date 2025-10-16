@@ -344,13 +344,7 @@ class _ProfileViewState extends State<ProfileView> {
             ],
           ),
         ),
-        floatingActionButton: isOwnProfile
-            ? FloatingActionButton(
-          backgroundColor: AppColors.blue,
-          onPressed: () => _showAddOptions(context),
-          child: const Icon(Icons.add),
-        )
-            : null,
+        floatingActionButton: null,
       ),
     );
   }

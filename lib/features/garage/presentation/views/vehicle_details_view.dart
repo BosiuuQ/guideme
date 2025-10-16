@@ -97,32 +97,49 @@ class _VehicleDetailsViewState extends State<VehicleDetailsView>
     );
   }
 
-  void _confirmDelete() {
+  
+void _confirmDelete() {
     Navigator.pop(context);
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: Colors.black87,
         title: const Text('Usuń pojazd', style: TextStyle(color: Colors.white)),
-        content: const Text('Czy na pewno chcesz usunąć ten pojazd?',
-            style: TextStyle(color: Colors.white70)),
+        content: const Text('Czy na pewno chcesz usunąć ten pojazd?', style: TextStyle(color: Colors.white70)),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => Navigator.of(dialogContext).pop(),
             child: const Text('Anuluj', style: TextStyle(color: Colors.white54)),
           ),
           ElevatedButton(
             onPressed: _isDeleting
                 ? null
                 : () async {
-                    setState(() => _isDeleting = true);
-                    Navigator.of(context).pop();
-                    await GarageBackend.deleteVehicleWithLog(vehicle.id);
+                    // ensure widget still mounted before mutating state
                     if (!mounted) return;
+                    setState(() => _isDeleting = true);
+                    // close the dialog immediately using dialogContext
+                    Navigator.of(dialogContext).pop();
+                    try {
+                      await GarageBackend.deleteVehicleWithLog(vehicle.id);
+                    } catch (e) {
+                      // if deletion failed, reset state and notify user
+                      if (mounted) {
+                        setState(() => _isDeleting = false);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Usuwanie nie powiodło się')),
+                        );
+                      }
+                      return;
+                    }
+                    if (!mounted) return;
+                    // after deletion, pop details screen
                     Navigator.of(context).pop();
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Pojazd usunięty')),
-                    );
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Pojazd usunięty')),
+                      );
+                    }
                   },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: _isDeleting

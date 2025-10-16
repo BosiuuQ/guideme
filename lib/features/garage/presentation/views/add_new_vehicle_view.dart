@@ -247,9 +247,12 @@ class _AddNewVehicleViewState extends State<AddNewVehicleView> {
     ),
     onChanged: (val) => setState(() => _selectedDrive = val),
     validator: (val) => (val == null || val.isEmpty) ? 'Wybierz napęd' : null,
-    items: ['FWD', 'RWD', 'AWD', '4x4']
-        .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-        .toList(),
+    items: [
+          DropdownMenuItem(value: 'FWD', child: Text('Na przednie koła')),
+          DropdownMenuItem(value: 'RWD', child: Text('Na tylne koła')),
+          DropdownMenuItem(value: 'AWD', child: Text('Na wszystkie koła')),
+          DropdownMenuItem(value: '4x4', child: Text('4x4')),
+        ],
     ),
 
     const SizedBox(height: 12),
@@ -336,11 +339,11 @@ class _AddNewVehicleViewState extends State<AddNewVehicleView> {
         productionYear: int.tryParse(yearCtrl.text.trim()) ?? 0,
         color: colorCtrl.text.trim(),
 
-        fuelType: fuelCtrl.text.trim(),
+        fuelType: _selectedFuel ?? fuelCtrl.text.trim(),
 
-        gearbox: gearboxCtrl.text.trim(),
+        gearbox: _selectedGearbox ?? gearboxCtrl.text.trim(),
 
-        drive: driveCtrl.text.trim(),
+        drive: _selectedDrive ?? driveCtrl.text.trim(),
         note: noteCtrl.text.trim(),
         imageUrls: [],
         status: "otwarty",

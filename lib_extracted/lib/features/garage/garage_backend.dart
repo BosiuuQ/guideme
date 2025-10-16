@@ -87,14 +87,14 @@ class GarageBackend {
   }
 
   static Future<void> _createEmptyVehicleLog(String vehicleId) async {
-    await _client.from('vehicle_logs').insert({
+    await _client.from('vehicle_logs').insert(_normalizeEntryDate({
       'vehicle_id': vehicleId,
       'last_check_date': null,
       'insurance_from': null,
       'insurance_to': null,
       'oil_change_date': null,
       'oil_change_km': null,
-    });
+    }));
   }
 
   static Future<void> deleteVehicleWithLog(String vehicleId) async {
@@ -371,12 +371,12 @@ class GarageBackend {
     required String date,
     required String cost,
   }) async {
-    await _client.from('vehicle_service_entries').insert({
+    await _client.from('vehicle_service_entries').insert(_normalizeEntryDate({
       'vehicle_id': vehicleId,
       'title': title,
       'date': date,
       'cost': cost,
-    });
+    }));
   }
 
   static Future<void> addFuelEntry({
@@ -394,11 +394,11 @@ class GarageBackend {
 //   - drive: ['FWD', 'RWD', 'AWD', '4x4']
 // This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
 
-    await _client.from('vehicle_fuel_entries').insert({
+    await _client.from('vehicle_fuel_entries').insert(_normalizeEntryDate({
       'vehicle_id': vehicleId,
       'date': date,
       'liters': liters,
       'pln': pln,
-    });
+    }));
   }
 }

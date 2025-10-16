@@ -1,21 +1,14 @@
-// TODO: convert this input to a DropdownButtonFormField with predefined choices
-// Suggested options for this field (example):
-//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
-//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
-//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
-// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
-
-// 📁 garage_backend.dart – z obsługą zakładki paliwo, statystyk miesięcznych
-// + limit pojazdów w garażu (garage_slots) sprawdzany przed dodaniem
-
+// lib/features/garage/garage_backend.dart
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:guide_me/features/garage/domain/entity/vehicle.dart';
 import 'package:postgrest/postgrest.dart';
+import 'package:intl/intl.dart'; // <-- import intl without alias
 
 class GarageBackend {
+  // Supabase client
   static final _client = Supabase.instance.client;
 
   static const String discordWebhookUrl =
@@ -25,6 +18,40 @@ class GarageBackend {
     final user = _client.auth.currentUser;
     if (user == null) throw Exception("Użytkownik nie jest zalogowany.");
     return user.id;
+  }
+
+  // ================= HELPERS =================================================
+
+  /// Normalize incoming date string to 'yyyy-MM-dd' for Postgres.
+  /// Accepts 'dd.MM.yyyy' (UI) and many ISO variants; returns a 'yyyy-MM-dd' string
+  /// or the original string on failure (DB will validate).
+  static String _normalizeDateForDb(String? date) {
+    if (date == null) return '';
+    try {
+      if (date.contains('.')) {
+        final parsed = DateFormat('dd.MM.yyyy').parseStrict(date);
+        return DateFormat('yyyy-MM-dd').format(parsed);
+      }
+      // Try ISO parse
+      final parsedIso = DateTime.parse(date);
+      return DateFormat('yyyy-MM-dd').format(parsedIso);
+    } catch (e) {
+      // Try to extract yyyy-mm-dd substring
+      try {
+        final m = RegExp(r'(\d{4}-\d{2}-\d{2})').firstMatch(date);
+        if (m != null) return m.group(1)!;
+      } catch (_) {}
+      // Fallback: return original (DB will validate)
+      return date;
+    }
+  }
+
+  /// Normalize 'date' inside a payload map if present.
+  static Map<String, dynamic> _normalizeEntryDate(Map<String, dynamic> row) {
+    if (row.containsKey('date')) {
+      row['date'] = _normalizeDateForDb(row['date']?.toString());
+    }
+    return row;
   }
 
   // ====== LIMITY GARAŻU ======================================================
@@ -44,7 +71,6 @@ class GarageBackend {
 
   /// Liczba pojazdów należących do użytkownika
   static Future<int> _getUserVehicleCount(String userId) async {
-    // Prosto i niezawodnie: pobierz id i policz długość.
     final data = await _client
         .from('garaz')
         .select('id')
@@ -61,13 +87,11 @@ class GarageBackend {
     return {'used': used, 'limit': limit};
   }
 
-  /// Czy można dodać kolejny pojazd? (użyteczne do blokowania przycisku w UI)
   static Future<bool> canAddVehicle() async {
     final usage = await getGarageUsage();
     return usage['used']! < usage['limit']!;
   }
 
-  /// Ile slotów zostaje wolnych
   static Future<int> getRemainingGarageSlots() async {
     final usage = await getGarageUsage();
     return (usage['limit']! - usage['used']!).clamp(0, 1 << 30);
@@ -87,13 +111,13 @@ class GarageBackend {
   static Future<void> addVehicle(Vehicle vehicle, List<File> images) async {
     final ownerId = _getCurrentUserId();
 
-    // ⚠️ TUTAJ sprawdzamy limit PRZED dodaniem
+    // TUTAJ sprawdzamy limit PRZED dodaniem
     final limit = await _getGarageSlotsForUser(ownerId);
     final used = await _getUserVehicleCount(ownerId);
     if (used >= limit) {
       throw Exception(
         'Osiągnięto limit pojazdów w garażu ($used/$limit). '
-        'Zwiększ limit lub usuń istniejący pojazd.',
+            'Zwiększ limit lub usuń istniejący pojazd.',
       );
     }
 
@@ -115,29 +139,8 @@ class GarageBackend {
       'capacity_cm3': vehicle.capacityCm3,
       'production_year': vehicle.productionYear,
       'color': vehicle.color,
-// TODO: convert this input to a DropdownButtonFormField with predefined choices
-// Suggested options for this field (example):
-//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
-//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
-//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
-// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
-
       'fuel_type': vehicle.fuelType,
-// TODO: convert this input to a DropdownButtonFormField with predefined choices
-// Suggested options for this field (example):
-//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
-//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
-//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
-// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
-
       'gearbox': vehicle.gearbox,
-// TODO: convert this input to a DropdownButtonFormField with predefined choices
-// Suggested options for this field (example):
-//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
-//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
-//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
-// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
-
       'drive': vehicle.drive,
       'note': vehicle.note,
       'image_urls': imageUrls,
@@ -145,11 +148,12 @@ class GarageBackend {
     };
 
     final inserted = await _client.from('garaz').insert(data).select().single();
-    final vehicleId = inserted['id'];
+    final vehicleId = inserted['id'] as String;
     await _createEmptyVehicleLog(vehicleId);
   }
 
   static Future<void> _createEmptyVehicleLog(String vehicleId) async {
+    // Create a blank log entry for the vehicle if not present.
     await _client.from('vehicle_logs').insert({
       'vehicle_id': vehicleId,
       'last_check_date': null,
@@ -162,13 +166,6 @@ class GarageBackend {
 
   static Future<void> deleteVehicleWithLog(String vehicleId) async {
     await _client.from('vehicle_service_entries').delete().eq('vehicle_id', vehicleId);
-// TODO: convert this input to a DropdownButtonFormField with predefined choices
-// Suggested options for this field (example):
-//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
-//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
-//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
-// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
-
     await _client.from('vehicle_fuel_entries').delete().eq('vehicle_id', vehicleId);
     await _client.from('vehicle_logs').delete().eq('vehicle_id', vehicleId);
     await _client.from('garaz').delete().eq('id', vehicleId);
@@ -313,13 +310,6 @@ class GarageBackend {
 
   static Future<List<Map<String, dynamic>>> fetchFuelEntries(String vehicleId) async {
     final data = await _client
-// TODO: convert this input to a DropdownButtonFormField with predefined choices
-// Suggested options for this field (example):
-//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
-//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
-//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
-// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
-
         .from('vehicle_fuel_entries')
         .select('*')
         .eq('vehicle_id', vehicleId)
@@ -333,13 +323,6 @@ class GarageBackend {
     final lastDay = DateTime(year, month + 1, 0).toIso8601String();
 
     final data = await _client
-// TODO: convert this input to a DropdownButtonFormField with predefined choices
-// Suggested options for this field (example):
-//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
-//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
-//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
-// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
-
         .from('vehicle_fuel_entries')
         .select('liters, pln')
         .eq('vehicle_id', vehicleId)
@@ -376,11 +359,12 @@ class GarageBackend {
         .eq('vehicle_id', vehicleId)
         .maybeSingle();
 
-    final updates = {
-      'last_check_date': lastCheckDate,
-      'insurance_from': insuranceFrom,
-      'insurance_to': insuranceTo,
-      'oil_change_date': oilChangeDate,
+    // Normalize all date fields before insert/update
+    final updates = <String, dynamic>{
+      'last_check_date': lastCheckDate == null ? null : _normalizeDateForDb(lastCheckDate),
+      'insurance_from': insuranceFrom == null ? null : _normalizeDateForDb(insuranceFrom),
+      'insurance_to': insuranceTo == null ? null : _normalizeDateForDb(insuranceTo),
+      'oil_change_date': oilChangeDate == null ? null : _normalizeDateForDb(oilChangeDate),
       'oil_change_km': oilChangeKm,
     };
 
@@ -403,49 +387,32 @@ class GarageBackend {
       'capacity_cm3': vehicle.capacityCm3,
       'production_year': vehicle.productionYear,
       'color': vehicle.color,
-// TODO: convert this input to a DropdownButtonFormField with predefined choices
-// Suggested options for this field (example):
-//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
-//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
-//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
-// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
-
       'fuel_type': vehicle.fuelType,
-// TODO: convert this input to a DropdownButtonFormField with predefined choices
-// Suggested options for this field (example):
-//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
-//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
-//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
-// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
-
       'gearbox': vehicle.gearbox,
-// TODO: convert this input to a DropdownButtonFormField with predefined choices
-// Suggested options for this field (example):
-//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
-//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
-//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
-// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
-
       'drive': vehicle.drive,
       'note': vehicle.note,
       'status': vehicle.status,
     }).eq('id', vehicle.id);
   }
 
+  // ADD SERVICE ENTRY WITH NORMALIZED DATE
   static Future<void> addServiceEntry({
     required String vehicleId,
     required String title,
     required String date,
     required String cost,
   }) async {
-    await _client.from('vehicle_service_entries').insert({
+    final Map<String, dynamic> payload = _normalizeEntryDate({
       'vehicle_id': vehicleId,
       'title': title,
       'date': date,
       'cost': cost,
     });
+
+    await _client.from('vehicle_service_entries').insert(payload);
   }
 
+  // ADD FUEL ENTRY WITH NORMALIZED DATE
   static Future<void> addFuelEntry({
     required String vehicleId,
     required String? date,
@@ -454,18 +421,13 @@ class GarageBackend {
   }) async {
     if (date == null || liters == null || pln == null) return;
 
-// TODO: convert this input to a DropdownButtonFormField with predefined choices
-// Suggested options for this field (example):
-//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
-//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
-//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
-// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
-
-    await _client.from('vehicle_fuel_entries').insert({
+    final Map<String, dynamic> payload = _normalizeEntryDate({
       'vehicle_id': vehicleId,
       'date': date,
       'liters': liters,
       'pln': pln,
     });
+
+    await _client.from('vehicle_fuel_entries').insert(payload);
   }
 }

@@ -32,6 +32,7 @@ class _SpotAddViewState extends State<SpotAddView> {
   bool isSubmitting = false;
 
   mb.LatLng? _pickedLocation;
+  bool _pickedByUser = false;
   mb.Symbol? _locationSymbol;
   mb.MapboxMapController? _mapController;
 
@@ -116,7 +117,7 @@ class _SpotAddViewState extends State<SpotAddView> {
       if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) return;
       final pos = await Geolocator.getCurrentPosition();
       final latlng = mb.LatLng(pos.latitude, pos.longitude);
-      setState(() { _pickedLocation = latlng; });
+      setState(() { _pickedLocation = latlng; _pickedByUser = true; });
       if (_mapController != null) {
         if (_locationSymbol == null) {
           _locationSymbol = await _mapController!.addSymbol(mb.SymbolOptions(geometry: latlng, iconImage: 'assets/icons/marker.png', iconSize: 0.12));
@@ -248,6 +249,7 @@ class _SpotAddViewState extends State<SpotAddView> {
     if (chosen != null) {
       setState(() {
         _pickedLocation = chosen;
+        _pickedByUser = true;
         // update small map symbol if present
         if (_mapController != null) {
           if (_locationSymbol == null) {
@@ -270,7 +272,7 @@ class _SpotAddViewState extends State<SpotAddView> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wybierz co najmniej jedno zdjęcie')));
       return;
     }
-    if (_pickedLocation == null) {
+    if (_pickedLocation == null || !_pickedByUser) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wskaż lokalizację na mapie')));
       return;
     }
@@ -286,6 +288,7 @@ class _SpotAddViewState extends State<SpotAddView> {
       int _attempt = 0;
       while(!_sendSuccess && _attempt < 3) {
         _attempt++;
+        debugPrint('Submitting spot. pickedByUser=$_pickedByUser, picked=$_pickedLocation');
         final success = await backend.SpotyBackend.addSpot(
         tytul: _nameController.text.trim(),
         opis: _descController.text.trim(),
@@ -418,6 +421,7 @@ class _SpotAddViewState extends State<SpotAddView> {
                           onTap: (latlng) async {
                             setState(() {
                               _pickedLocation = latlng;
+                              _pickedByUser = true;
                             });
                             if (_mapController != null) {
                               if (_locationSymbol == null) {

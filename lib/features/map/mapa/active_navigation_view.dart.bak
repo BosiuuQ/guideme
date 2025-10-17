@@ -7,11 +7,14 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:guide_me/mapbox_shim.dart' as mb;
+import '../../../core/presentation/views/main_view.dart';
 import 'map_logic_handler.dart';
 import '../../../core/constants/app_assets.dart';
 import '../../../core/presentation/widgets/app_drawer_widget.dart';
 import 'mapbox_navigation_bridge.dart' as _mb;
 import 'main_map_widget.dart';
+import 'package:go_router/go_router.dart';
+import '../../../core/config/routing/app_routes.dart';
 import 'place_search_view.dart'; // for PlaceSearchSheet
 import 'route_planner_view.dart'; // for RoutePlannerView
 
@@ -386,7 +389,21 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> with Single
   String _translateInstruction(String? instr) {
     if (instr == null) return 'Trasa';
     final s = instr.toLowerCase();
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
     if (s.contains('right')) return 'Skręć w prawo';
+// TODO: convert this input to a DropdownButtonFormField with predefined choices
+// Suggested options for this field (example):
+//   - fuel: ['Petrol', 'Diesel', 'LPG', 'Electric', 'Hybrid']
+//   - gearbox: ['Manual', 'Automatic', 'Semi-automatic']
+//   - drive: ['FWD', 'RWD', 'AWD', '4x4']
+// This helps enforce allowed values and matches DB columns: fuel_type, gearbox, drive.
+
     if (s.contains('left')) return 'Skręć w lewo';
     if (s.contains('arrive')) return 'Dojazd na miejsce';
     if (s.contains('continue')) return 'Kontynuuj';
@@ -571,10 +588,21 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> with Single
             child: GestureDetector(
               onTap: () {
                 try {
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const MainMapWidget()),
-                        (route) => false,
-                  );
+                  try {
+                    try {
+                      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+                        MaterialPageRoute(builder: (_) => const MainView()),
+                            (route) => false,
+                      );
+                    } catch (e) {
+                      debugPrint('Navigation to MainView failed: \$e');
+                      Navigator.of(context, rootNavigator: true).pushReplacement(MaterialPageRoute(builder: (_) => const MainView()));
+                    }
+                  } catch (e) {
+                    debugPrint('Navigation to MainMapWidget failed: \$e');
+                    // fallback: try pushReplacement on root navigator
+                    Navigator.of(context, rootNavigator: true).pushReplacement(MaterialPageRoute(builder: (_) => const MainMapWidget()));
+                  }
                 } catch (_) {
                   try { Navigator.of(context).popUntil((r) => r.isFirst); } catch (_) {}
                 }
@@ -739,19 +767,29 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> with Single
                                                 padding: const EdgeInsets.symmetric(vertical: 16),
                                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                                               ),
-                                              onPressed: () {
-                                                try { _rerouteTimer?.cancel(); } catch(_) {}
-                                                try { _mapLogic.dispose(); } catch(_) {} 
-                                                // Prawidłowy powrót do głównego widoku
+                                              onPressed: () async {
+                                                // Przerwij reroute timer od razu
+                                                try { _rerouteTimer?.cancel(); } catch (_) {}
+
+                                                // Najpierw spróbuj bezpiecznie nawigować do głównego widoku
                                                 try {
-                                                  try { _mapLogic.dispose(); } catch(_) {} 
-                                                Navigator.of(context).popUntil((route) => route.isFirst);
-                                                } catch (_) {
-                                                  // fallback
-                                                  Navigator.of(context).pushAndRemoveUntil(
-                                                    MaterialPageRoute(builder: (_) => const MainMapWidget()),
-                                                        (route) => false,
-                                                  );
+                                                  // Spróbuj użyć root navigator context do znalezienia GoRouter'a (jeśli GoRouter jest zainstalowany globalnie)
+                                                  try {
+                                                    final rootNavState = Navigator.of(context, rootNavigator: true);
+                                                    final rootContext = rootNavState.context;
+                                                    GoRouter.of(rootContext).goNamed(AppRoutes.mainView);
+                                                  } catch (e) {
+                                                    // fallback: spróbuj zwykłego context.goNamed
+                                                    try {
+                                                      context.goNamed(AppRoutes.mainView);
+                                                    } catch (e2) {
+                                                      // ostateczny fallback: zwykły popUntil
+                                                      Navigator.of(context).popUntil((r) => r.isFirst);
+                                                    }
+                                                  }
+                                                } finally {
+                                                  // Zatrzymaj map logic dopiero PO nawigacji — ważne, żeby nie usuwać providerów/kontekstu przed użyciem GoRoutera
+                                                  try { _mapLogic.stop(); } catch (_) {}
                                                 }
                                               },
                                               child: const Text(
@@ -761,6 +799,7 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> with Single
                                             ),
                                           ),
                                           const SizedBox(width: 12),
+
 
                                           // Nowa trasa
                                           Expanded(

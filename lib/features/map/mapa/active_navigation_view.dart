@@ -4,6 +4,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 
 import 'package:guide_me/mapbox_shim.dart' as mb;
@@ -584,27 +585,33 @@ class _ActiveNavigationViewState extends State<ActiveNavigationView> with Single
             left: 20,
             bottom: overlayBottom,
             child: GestureDetector(
-              onTap: () {
+
+              onTap: () async {
                 try {
-                  try {
-                    try {
-                      Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-                        MaterialPageRoute(builder: (_) => const MainView()),
-                            (route) => false,
-                      );
-                    } catch (e) {
-                      debugPrint('Navigation to MainView failed: \$e');
-                      Navigator.of(context, rootNavigator: true).pushReplacement(MaterialPageRoute(builder: (_) => const MainView()));
-                    }
-                  } catch (e) {
-                    debugPrint('Navigation to MainMapWidget failed: \$e');
-                    // fallback: try pushReplacement on root navigator
-                    Navigator.of(context, rootNavigator: true).pushReplacement(MaterialPageRoute(builder: (_) => const MainMapWidget()));
-                  }
-                } catch (_) {
-                  try { Navigator.of(context).popUntil((r) => r.isFirst); } catch (_) {}
+                  // Bezpiecznie zatrzymaj logikę nawigacji
+                  try { _rerouteTimer?.cancel(); } catch (_) {}
+                  try { _mapLogic.stop(); } catch (_) {}
+
+                  await Future.delayed(const Duration(milliseconds: 100));
+
+                  if (!mounted) return;
+
+                  // 1️⃣ Zamknij ActiveNavigationView
+                  Navigator.of(context).popUntil((route) => route.isFirst);
+
+                  // 2️⃣ W MainView, jeśli używasz Riverpod/Provider do kontroli indeksu tabów,
+                  // ustaw aktywny indeks na ten z MainMapWidget
+                  // np. context.read(mainTabIndexProvider.notifier).state = 0;
+                  // Jeśli nie masz takiego providera, po prostu popUntil wystarczy
+
+                } catch (e) {
+                  debugPrint('Error while finishing navigation: $e');
                 }
               },
+
+
+
+
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(

@@ -196,7 +196,7 @@ class _ViewpointAddViewState extends State<ViewpointAddView> {
       },
     );
   }
-
+// ---- SUBMIT ----
   // ---- SUBMIT ----
   Future<void> _submit() async {
     if (!_acceptedRules) {
@@ -229,7 +229,26 @@ class _ViewpointAddViewState extends State<ViewpointAddView> {
       }
 
       final fileName = 'viewpoint_${const Uuid().v4()}.jpg';
-      final coordinates = await _getCurrentLocation();
+
+      // --- TUTAJ: uzyskujemy MapPoint w JEDNYM, zgodnym typie ---
+      // Jeżeli użytkownik wybrał lokację na mapie (mb.LatLng), przekonwertuj ją do MapPoint.
+      // W przeciwnym wypadku pobierz aktualną lokalizację zwracającą MapPoint.
+      MapPoint coordinates;
+      if (_pickedLocation != null) {
+        // _pickedLocation to mb.LatLng — przekonwertuj na MapPoint (x = lng, y = lat)
+        coordinates = MapPoint(x: _pickedLocation!.longitude, y: _pickedLocation!.latitude);
+      } else {
+        coordinates = await _getCurrentLocation();
+      }
+
+      // opcjonalna walidacja (jeśli _getCurrentLocation zwraca MapPoint(0,0) przy błędach)
+      if (coordinates.x == 0.0 && coordinates.y == 0.0) {
+        // Możesz zdecydować czy traktować to jako błąd czy pozwolić dalej
+        debugPrint('Warning: coordinates seem to be 0,0 — sprawdź GPS / wybór lokacji.');
+      }
+
+      // Debug: pokaż co wysyłamy
+      debugPrint('Submitting viewpoint. pickedLocation=${_pickedLocation != null}, coords=${coordinates.x},${coordinates.y}');
 
       final viewpoint = Viewpoint(
         id: '',
@@ -239,26 +258,42 @@ class _ViewpointAddViewState extends State<ViewpointAddView> {
         likes: 0,
         rating: 0,
         creatorId: user.id,
-        coordinates: coordinates,
+        coordinates: coordinates, // teraz pewny MapPoint
         address: '',
         isFavourite: false,
       );
 
+      // Wywołanie gdy addViewpoint jest Future<void> i rzuca exception w razie błędu:
       await ViewpointBackend.addViewpoint(viewpoint, _imageFile!, fileName);
 
-      if (!mounted) return;
-      context.go('/mainView/viewpointView');
+      // jeśli doszło do tego miejsca to jest OK — pokazuj sukces
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Dodano nowy punkt widokowy!")),
       );
+
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Dodano nowy punkt widokowy!")),
+      );
+
+      // Bezpieczna nawigacja: spróbuj GoRouter, jeśli nie ma — fallback
+      try {
+        context.go('/mainView/viewpointView');
+      } catch (_) {
+        Navigator.of(context).popUntil((r) => r.isFirst);
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("Błąd: ${e.toString()}")),
       );
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
-
-    if (mounted) setState(() => _isLoading = false);
   }
+
+
 
   @override
   void dispose() {

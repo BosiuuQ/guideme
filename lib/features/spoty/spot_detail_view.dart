@@ -74,20 +74,55 @@ class _SpotDetailViewState extends State<SpotDetailView> {
     try {
       if (widget.spot['lat'] == null || widget.spot['lng'] == null) return;
       final pos = await Geolocator.getCurrentPosition();
-      final plat = (widget.spot['lat'] is String) ? double.tryParse(widget.spot['lat']) ?? 0.0 : (widget.spot['lat']?.toDouble() ?? 0.0);
-      final plng = (widget.spot['lng'] is String) ? double.tryParse(widget.spot['lng']) ?? 0.0 : (widget.spot['lng']?.toDouble() ?? 0.0);
-      final d = Geolocator.distanceBetween(pos.latitude, pos.longitude, plat, plng) / 1000.0;
+      final plat = (widget.spot['lat'] is String) ? double.tryParse(
+          widget.spot['lat']) ?? 0.0 : (widget.spot['lat']?.toDouble() ?? 0.0);
+      final plng = (widget.spot['lng'] is String) ? double.tryParse(
+          widget.spot['lng']) ?? 0.0 : (widget.spot['lng']?.toDouble() ?? 0.0);
+      final d = Geolocator.distanceBetween(
+          pos.latitude, pos.longitude, plat, plng) / 1000.0;
       String txt;
       if (d >= 1.0) {
         txt = '${d.toStringAsFixed(1)} km';
       } else {
-        txt = '${(d*1000).toStringAsFixed(0)} m';
+        txt = '${(d * 1000).toStringAsFixed(0)} m';
       }
-      setState(() { _distanceText = txt; });
+      setState(() {
+        _distanceText = txt;
+      });
     } catch (_) {
       // ignore
     }
   }
+
+  Future<void> _deleteSpot() async {
+    final spotId = widget.spot['id'];
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Usuń wydarzenie'),
+        content: const Text('Czy na pewno chcesz usunąć to wydarzenie? Tej operacji nie można cofnąć.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Anuluj')),
+          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Usuń')),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    try {
+      // Usuń najpierw uczestników, aby uniknąć problemów z FK
+      await supabase.from('spoty_uczestnicy').delete().eq('spot_id', spotId);
+      await supabase.from('spoty').delete().eq('id', spotId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wydarzenie usunięte')));
+      Navigator.of(context).pop(true); // return true to indicate deletion
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd podczas usuwania: \$e')));
+    }
+  }
+
+
 
   Future<void> _toggleJoin() async {
     final userId = supabase.auth.currentUser?.id;
@@ -141,6 +176,14 @@ class _SpotDetailViewState extends State<SpotDetailView> {
       appBar: AppBar(
         title: Text(spot['tytul'] ?? 'Spot', style: const TextStyle(color: Colors.white)),
         backgroundColor: Colors.transparent,
+        actions: [
+          if (_isAuthor)
+            IconButton(
+              icon: const Icon(Icons.delete_forever, color: Colors.white),
+              onPressed: _deleteSpot,
+              tooltip: 'Usuń spot',
+            ),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),

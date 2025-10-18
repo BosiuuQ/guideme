@@ -23,15 +23,38 @@ class MapLogicHandler {
   double _currentSpeed = 0.0;
   double _cameraBearing = 0.0;
 
-  final double _speedAlpha = 0.25;
+  final double _speedAlpha = 0.03;
   final double _bearingAlpha = 0.12;
   final double _correctionPerSecond = 1.0;
   final double _maxCorrectionFactor = 2.0;
   final double _minSpeedForBearing = 0.1;
 
+
+  // Alpha-Beta filter state (simple predictive filter to smooth position and velocity)
+  double _abAlpha = 0.45; // position correction
+  double _abBeta = 0.20; // velocity correction
+  double? _estLat;
+  double? _estLon;
+  double _estVLat = 0.0; // degrees per second approx
+  double _estVLon = 0.0;
+  // Logger (CSV) - will append lines if enabled
+  bool _enableLogger = true;
+  String _logBuffer = "timestamp,measLat,measLon,estLat,estLon,measSpeed,currentSpeed,dt,distToTarget\n";
   // Ticker
   Ticker? _ticker;
   DateTime? _lastTick;
+  // Accumulator to run logic at lower tick rate (30 Hz)
+  double _tickAccumulator = 0.0;
+  final double _desiredTickInterval = 1.0/30.0;
+
+  // moving average window for measured speeds to reduce GPS jitter
+  final List<double> _speedWindow = <double>[];
+  final int _speedWindowSize = 11;
+
+  // limits on acceleration/deceleration (m/s^2) to prevent sudden jumps
+  final double _maxAccelPerSec = 1.5; // max increase per second (reduced)
+  final double _maxDecelPerSec = 3.0; // max decrease per second (reduced)
+
   StreamSubscription<Position>? _posSub;
 
   MapLogicHandler({this.onUpdate, this.tickerProvider});
@@ -94,11 +117,71 @@ class MapLogicHandler {
       }
     }
 
-    _currentSpeed = (_speedAlpha * measuredSpeed) + ((1 - _speedAlpha) * _currentSpeed);
+    // add measuredSpeed into sliding window for a short moving average to reduce spike noise
+    if (_speedWindow.length >= _speedWindowSize) {
+      _speedWindow.removeAt(0);
+    }
+    _speedWindow.add(measuredSpeed);
+    double windowAvg = (_speedWindow.isNotEmpty ? ( () {
+      final tmp = List<double>.from(_speedWindow)..sort();
+      return tmp[tmp.length ~/ 2];
+    } )() : 0.0);
+
+    // compute dt since last GPS update to limit acceleration/deceleration
+    double desiredSpeed = windowAvg;
+    if (_lastGpsTime != null) {
+      final dt = now.difference(_lastGpsTime!).inMilliseconds / 1000.0;
+      if (dt > 0) {
+        final double maxInc = _maxAccelPerSec * dt;
+        final double maxDec = _maxDecelPerSec * dt;
+        final double diff = desiredSpeed - _currentSpeed;
+        final double clampedDiff = diff.clamp(-maxDec, maxInc);
+        desiredSpeed = _currentSpeed + clampedDiff;
+      }
+    }
+
+    // apply smoothing to the (clamped) desired speed
+    _currentSpeed = (_speedAlpha * desiredSpeed) + ((1 - _speedAlpha) * _currentSpeed);
 
     _targetLocation = LatLng(pos.latitude, pos.longitude);
 
-    if (_lastGpsPosition != null) {
+    // Alpha-Beta filter measurement update
+    if (_estLat == null || _estLon == null) {
+      // initialize
+      _estLat = pos.latitude;
+      _estLon = pos.longitude;
+      _estVLat = 0.0;
+      _estVLon = 0.0;
+    } else {
+      final now2 = DateTime.now();
+      final dtMeas = (_lastGpsTime != null) ? now2.difference(_lastGpsTime!).inMilliseconds / 1000.0 : 0.0;
+      if (dtMeas > 0) {
+        // predict
+        _estLat = _estLat! + _estVLat * dtMeas;
+        _estLon = _estLon! + _estVLon * dtMeas;
+        // residual in degrees
+        final resLat = pos.latitude - _estLat!;
+        final resLon = pos.longitude - _estLon!;
+        // update
+        _estLat = _estLat! + _abAlpha * resLat;
+        _estLon = _estLon! + _abAlpha * resLon;
+        _estVLat = _estVLat + (_abBeta * resLat) / dtMeas;
+        _estVLon = _estVLon + (_abBeta * resLon) / dtMeas;
+      }
+    }
+
+    // log measurement
+    try {
+      if (_enableLogger) {
+        final ts = DateTime.now().toIso8601String();
+        final measSpeed = (pos.speed != null && pos.speed!.isFinite) ? pos.speed! : 0.0;
+        final estLatStr = _estLat?.toStringAsFixed(7) ?? '';
+        final estLonStr = _estLon?.toStringAsFixed(7) ?? '';
+        _logBuffer += '\$ts,${pos.latitude},${pos.longitude},' + estLatStr + ',' + estLonStr + ',\$measSpeed,\$_currentSpeed,0.0,0.0\n';
+      }
+    } catch (e) {}
+
+    \1
       final bearingNow = _calculateBearing(LatLng(_lastGpsPosition!.latitude, _lastGpsPosition!.longitude), _targetLocation!);
       if (_currentSpeed > _minSpeedForBearing) {
         _bearing = bearingNow;
@@ -132,21 +215,44 @@ class MapLogicHandler {
       _lastTick = now;
       return;
     }
-    final dt = now.difference(_lastTick!).inMilliseconds / 1000.0;
+    final rawDt = now.difference(_lastTick!).inMilliseconds / 1000.0;
     _lastTick = now;
-    if (dt <= 0) return;
+    if (rawDt <= 0) return;
+
+    // accumulate elapsed time and process at _desiredTickInterval (30 Hz) to reduce CPU and smooth movements
+    _tickAccumulator += rawDt;
+    if (_tickAccumulator < _desiredTickInterval) return;
+    // cap dt to avoid huge jumps on resume
+    final dt = _tickAccumulator.clamp(0.0, 0.5);
+    _tickAccumulator = 0.0;
 
     if (_displayPos == null) return;
 
     if (_currentSpeed > 0.001) {
-      final moveMeters = _currentSpeed * dt;
-      _displayPos = _destinationPoint(_displayPos!, _bearing, moveMeters);
+      // apply small slowdown factor so cursor runs slightly slower than raw GPS speed
+      final moveMeters = _currentSpeed * dt * 0.75;
+      // compute tentative new position
+      final newPos = _destinationPoint(_displayPos!, _bearing, moveMeters);
+      // prevent backward jumps: if moving increases distance to target significantly, reduce movement
+      if (_targetLocation != null) {
+        final prevDist = _distanceMeters(_displayPos!.latitude, _displayPos!.longitude, _targetLocation!.latitude, _targetLocation!.longitude);
+        final newDist = _distanceMeters(newPos.latitude, newPos.longitude, _targetLocation!.latitude, _targetLocation!.longitude);
+        // allow small epsilon due to rounding
+        if (newDist <= prevDist + 0.5) {
+          _displayPos = newPos;
+        } else {
+          // discard forward movement that would go away from target; instead apply a reduced correction toward target
+          // keep _displayPos unchanged here to avoid reverse motion
+        }
+      } else {
+        _displayPos = newPos;
+      }
     }
 
     if (_targetLocation != null) {
       final distToTarget = _distanceMeters(_displayPos!.latitude, _displayPos!.longitude, _targetLocation!.latitude, _targetLocation!.longitude);
       if (distToTarget > 0.01) {
-        double corrSpeed = (_correctionPerSecond * (distToTarget / 5.0)).clamp(0.0, _maxCorrectionFactor);
+        double corrSpeed = (_correctionPerSecond * (distToTarget / 5.0)).clamp(0.0, _maxCorrectionFactor) * 0.3;
         final corrMeters = corrSpeed * dt;
         if (corrMeters >= distToTarget) {
           _displayPos = _targetLocation;

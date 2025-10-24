@@ -1,6 +1,7 @@
 // lib/features/map/mapa/map_logic_handler.dart
 // Improved: velocity integration + EMA + watchdog + best-effort camera/symbol rotation.
 // Poprawki: _destinationPoint zwraca List<double>, dodano _interpBearing.
+// DODANO: lepsze wygładzanie pozycji/bearingu, ograniczenie kroków, dead-reckoning
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -95,6 +96,11 @@ class MapLogicHandler {
   double _velNorth = 0.0; // meters/sec north (approx)
   double _velEast = 0.0; // meters/sec east
 
+  // additional smoothing internal state
+  double _smoothedSpeed = 0.0; // EMA speed
+  double _smoothedVelNorth = 0.0;
+  double _smoothedVelEast = 0.0;
+
   // subs & time
   StreamSubscription<Position>? _positionSub;
   DateTime? _lastTickTime;
@@ -109,6 +115,10 @@ class MapLogicHandler {
   final double _minAlpha = 0.01;
   final double _maxTurnRateDegPerSec = 300.0;
   final double _maxStepMPerSec = 80.0;
+
+  // safety tuning (new)
+  final double _maxInstantJumpMeters = 60.0; // if sample jumps more than this compared to anim, do gentle catch-up
+  final double _accuracyWeightScale = 0.02; // how much accuracy reduces trust in sample (per meter)
 
   MapLogicHandler({
     this.delayMs = 180,
@@ -318,13 +328,40 @@ class MapLogicHandler {
           final brng = _bearingBetween(prev.latitude, prev.longitude, s.latitude, s.longitude);
           // decompose
           final rad = brng * math.pi / 180.0;
-          _velNorth = speed * math.cos(rad);
-          _velEast = speed * math.sin(rad);
-          _currentSpeed = speed;
-          if (s.bearing != null) _currentBearing = s.bearing!;
+          final newVelNorth = speed * math.cos(rad);
+          final newVelEast = speed * math.sin(rad);
+
+          // EMA smoothing for velocity & speed (prevents wild jumps)
+          const double alpha = 0.35; // smoothing factor
+          _smoothedVelNorth = _smoothedVelNorth * (1 - alpha) + newVelNorth * alpha;
+          _smoothedVelEast = _smoothedVelEast * (1 - alpha) + newVelEast * alpha;
+          _smoothedSpeed = _smoothedSpeed * (1 - alpha) + speed * alpha;
+
+          // copy to public/current fields
+          _velNorth = _smoothedVelNorth;
+          _velEast = _smoothedVelEast;
+          _currentSpeed = _smoothedSpeed;
+
+          // prefer bearing from velocity when moving
+          if (_currentSpeed > 0.5) {
+            final vb = _normalizeBearing(math.atan2(_velEast, _velNorth) * 180.0 / math.pi);
+            _currentBearing = vb;
+          } else if (s.bearing != null) {
+            _currentBearing = s.bearing!;
+          }
+        } else {
+          // dt too small - possibly burst, but still accept sample bearing if provided and we're slow
+          if (s.bearing != null && _currentSpeed < 0.5) {
+            _currentBearing = s.bearing!;
+          }
         }
+      } else {
+        // first sample
+        if (s.bearing != null) _currentBearing = s.bearing!;
       }
-    } catch (_) {}
+    } catch (e) {
+      if (debug) debugPrint('[MapLogic] _processIncomingSampleAndVelocity error: $e');
+    }
   }
 
   // ---------------- map created ----------------
@@ -462,13 +499,21 @@ class MapLogicHandler {
 
   // ---------------- prediction helpers ----------------
   List<double> _predictForward(LocationSample s, double leadSec) {
-    if (s.bearing == null) return [s.latitude, s.longitude];
-    // use current velocity estimate if available
-    double speed = _currentSpeed;
-    final distMeters = speed * leadSec;
-    if (distMeters <= 0.4) return [s.latitude, s.longitude];
-    final p = _destinationPointList(s.latitude, s.longitude, s.bearing ?? _currentBearing, distMeters);
-    return p;
+    // Dead-reckon using smoothed velocity vector if available
+    try {
+      if ((_smoothedVelNorth.abs() + _smoothedVelEast.abs()) < 0.001) return [s.latitude, s.longitude];
+      final meters = (_smoothedSpeed) * leadSec;
+      if (meters <= 0.2) return [s.latitude, s.longitude];
+
+      // compute dest using small distance approximation from velocity vector (north/east)
+      final degPerMeterLat = 1.0 / 111132.0;
+      final degPerMeterLng = 1.0 / (111319.0 * math.cos(s.latitude * math.pi / 180.0));
+      final dLat = (_smoothedVelNorth * leadSec) * degPerMeterLat;
+      final dLng = (_smoothedVelEast * leadSec) * degPerMeterLng;
+      return [s.latitude + dLat, s.longitude + dLng];
+    } catch (_) {
+      return [s.latitude, s.longitude];
+    }
   }
 
   LocationSample? _findDelayedSampleByReceived(int delayMs) {
@@ -535,7 +580,7 @@ class MapLogicHandler {
     double tgtLng = pred[1];
     final tgtBearing = targetSample.bearing ?? _currentBearing;
 
-    // route snapping
+    // route snapping (conservative)
     if (route != null && route!.points.length >= 2) {
       final snapped = _closestOnRoute(tgtLat, tgtLng);
       final d = _haversineMeters(snapped[0], snapped[1], tgtLat, tgtLng);
@@ -544,40 +589,72 @@ class MapLogicHandler {
       }
     }
 
-    // velocity integration: move current anim position by velocity*dt if we have velocity
+    // If anim position exists, blend using velocity + adaptive alpha
     if (_animLat != null && _animLng != null) {
-      // convert velNorth/velEast meters/sec to deg lat/lng per second approx
+      // integrate velocity for short-term prediction from anim pos
       final degPerMeterLat = 1.0 / 111132.0;
       final degPerMeterLng = 1.0 / (111319.0 * math.cos(_animLat! * math.pi / 180.0));
       final predLatFromVel = _animLat! + (_velNorth * dt) * degPerMeterLat;
       final predLngFromVel = _animLng! + (_velEast * dt) * degPerMeterLng;
 
-      // combine with alpha smoothing to gently follow target but also honor velocity for smoothness
+      // base alpha from time constant
       final alphaBase = (1.0 - math.exp(-dt / _tau)).clamp(_minAlpha, 0.98);
 
-      // distance to target
+      // distance from anim to measured target
       final distanceToTarget = _haversineMeters(_animLat!, _animLng!, tgtLat, tgtLng);
+
+      // accuracy influence: if sample accuracy large, trust it less
+      final accPenalty = (targetSample.accuracy * _accuracyWeightScale).clamp(0.0, 0.85);
+
+      // if sudden huge jump, limit alpha so we catch up gently
+      double jumpFactor = 1.0;
+      if (distanceToTarget > _maxInstantJumpMeters) {
+        jumpFactor = (_maxInstantJumpMeters / distanceToTarget);
+      }
+
+      // catchup term based on distance
       final catchup = (distanceToTarget / (_maxStepMPerSec * dt)).clamp(0.0, 2.0);
-      final alpha = (alphaBase + catchup * 0.5).clamp(_minAlpha, 0.99);
 
-      // targetPos that blends predictive velocity and measured target
-      final blendFactor = 0.5; // how much velocity influences immediate step (tuneable)
-      final blendedLat = predLatFromVel * blendFactor + tgtLat * (1 - blendFactor);
-      final blendedLng = predLngFromVel * blendFactor + tgtLng * (1 - blendFactor);
+      // combined alpha: balance dt responsiveness, distance catchup, and accuracy penalty
+      double alpha = (alphaBase * (0.8 + 0.2 * catchup) * jumpFactor) * (1.0 - accPenalty);
+      alpha = alpha.clamp(_minAlpha, 0.99);
 
-      // update anim pos smoothly
-      _animLat = _animLat! + (blendedLat - _animLat!) * alpha;
-      _animLng = _animLng! + (blendedLng - _animLng!) * alpha;
+      // blend predictive vel-pos and measured target depending on trust
+      final velocityTrust = (_currentSpeed > 0.6) ? 0.6 : 0.25; // when moving we trust velocity more
+      final blendFactor = velocityTrust * (1.0 - accPenalty);
 
-      // bearing: interpolate with max turn rate
+      final blendedLat = predLatFromVel * blendFactor + tgtLat * (1.0 - blendFactor);
+      final blendedLng = predLngFromVel * blendFactor + tgtLng * (1.0 - blendFactor);
+
+      // apply step clamping to avoid teleport/rollback
+      final nextLat = _animLat! + (blendedLat - _animLat!) * alpha;
+      final nextLng = _animLng! + (blendedLng - _animLng!) * alpha;
+
+      // clamp step size
+      final stepMeters = _haversineMeters(_animLat!, _animLng!, nextLat, nextLng);
+      final maxStepMeters = math.max(0.5, (_currentSpeed * dt * 1.8)); // allow slightly faster than speed
+      double finalLat = nextLat;
+      double finalLng = nextLng;
+      if (stepMeters > maxStepMeters) {
+        final scale = maxStepMeters / (stepMeters + 1e-9);
+        finalLat = _animLat! + (nextLat - _animLat!) * scale;
+        finalLng = _animLng! + (nextLng - _animLng!) * scale;
+      }
+
+      _animLat = finalLat;
+      _animLng = finalLng;
+
+      // bearing: interpolate with alpha but cap turn rate
       final curB = _animBearing ?? _normalizeBearing(tgtBearing);
       double diff = ((tgtBearing - curB + 540.0) % 360.0) - 180.0;
       final maxTurn = _maxTurnRateDegPerSec * dt;
       if (diff > maxTurn) diff = maxTurn;
       if (diff < -maxTurn) diff = -maxTurn;
-      _animBearing = _normalizeBearing(curB + diff * alpha);
+      // use alpha to smooth turning, but allow quicker turning if moving fast
+      final bearingAlpha = ((_currentSpeed > 2.0) ? 0.6 : 0.18).clamp(0.05, 0.8);
+      _animBearing = _normalizeBearing(curB + diff * bearingAlpha);
     } else {
-      // init
+      // init positions directly
       _animLat = tgtLat;
       _animLng = tgtLng;
       _animBearing = _normalizeBearing(tgtBearing);
@@ -587,9 +664,10 @@ class MapLogicHandler {
       _refreshGasStationsIfNeeded();
     }
 
-    // update speed estimate using recent samples
+    // update speed estimate using recent samples (kept same but with small guard)
     try {
-      final recent = _buffer.where((s) => s.receivedAt.isAfter(DateTime.now().subtract(Duration(seconds: 3)))).toList();
+      final nowMs = DateTime.now();
+      final recent = _buffer.where((s) => s.receivedAt.isAfter(nowMs.subtract(Duration(seconds: 3)))).toList();
       if (recent.length >= 2) {
         double dist = 0.0; double tim = 0.0;
         for (int i = 1; i < recent.length; i++) {
@@ -648,13 +726,15 @@ class MapLogicHandler {
         final c = controller as dynamic;
         var moved = false;
         try {
+          // choose ms proportional to 100-300ms for smoothness, faster if moving quickly
+          final ms = (_currentSpeed > 5.0) ? 120 : 220;
           try {
-            await c.setCamera(pos, zoom: 18.0, bearing: anim.bearing, ms: 120);
+            await c.setCamera(pos, zoom: 18.0, bearing: anim.bearing, ms: ms);
             moved = true;
           } catch (_) {}
           if (!moved) {
             try {
-              await c.moveCamera(pos, zoom: 18.0, ms: 120);
+              await c.moveCamera(pos, zoom: 18.0, ms: ms);
               moved = true;
             } catch (_) {}
           }
